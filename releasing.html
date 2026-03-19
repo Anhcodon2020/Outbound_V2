@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danh sách Releasing</title>
+    <!-- Thư viện đọc Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
+        h1 { color: #333; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .status-badge { padding: 5px 10px; border-radius: 15px; font-size: 0.85em; color: white; }
+        .status-new { background-color: #28a745; }
+        .status-other { background-color: #6c757d; }
+        .status-allocate { background-color: #ffc107; color: #333; }
+        .status-close { background-color: #dc3545; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        /* Style cho Tabs */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e9ecef; }
+        .tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 16px; font-weight: bold; color: #6c757d; border-bottom: 3px solid transparent; transition: all 0.3s; }
+        .tab-btn:hover { background-color: #f8f9fa; color: #0056b3; }
+        .tab-btn.active { color: #007bff; border-bottom-color: #007bff; }
+        /* Style cho Search Box */
+        .search-container { margin-bottom: 15px; }
+        .search-input { padding: 10px; width: 100%; max-width: 300px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        /* Style cho Sortable Column */
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background-color: #0056b3; }
+        /* Style cho Import Area */
+        .import-area { margin-bottom: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; display: flex; gap: 10px; align-items: center; }
+        .btn-import { padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-import:hover { background-color: #218838; }
+
+        /* Style cho Progress Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .progress-wrapper { width: 100%; background-color: #e9ecef; border-radius: 10px; margin: 15px 0; overflow: hidden; }
+        .progress-bar { width: 0%; height: 20px; background-color: #007bff; transition: width 0.3s ease; }
+        .progress-text { font-weight: bold; margin-bottom: 5px; display: block; }
+        
+        /* Style cho Result Summary */
+        .result-box { display: none; margin-top: 15px; text-align: left; background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #ddd; }
+        .result-item { margin: 5px 0; font-size: 14px; }
+        .res-new { color: #28a745; font-weight: bold; }
+        .res-update { color: #ffc107; font-weight: bold; } /* Màu vàng đậm cho dễ nhìn trên nền trắng */
+        .res-error { color: #dc3545; font-weight: bold; }
+        .btn-close { margin-top: 15px; padding: 8px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-close:hover { background-color: #5a6268; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Danh sách Releasing</a>
+    </div>
+
+    <h1>Quản lý Xuất Kho (Releasing)</h1>
+    
+    <div class="import-area">
+        <strong>Nhập liệu từ Excel:</strong>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" />
+        <button class="btn-import" onclick="importExcel()">📤 Tải lên & Xử lý</button>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="skuSearch" class="search-input" placeholder="🔍 Tìm kiếm theo SKU..." oninput="applyFilters()">
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="filterTab(1, this)">Open</button>
+        <button class="tab-btn" onclick="filterTab(3, this)">Allocate</button>
+        <button class="tab-btn" onclick="filterTab(7, this)">Close</button>
+    </div>
+
+    <table id="releasingTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Key</th>
+                <th class="sortable" onclick="toggleSort()">Ngày Release <span id="sortIcon">▼</span></th>
+                <th>SKU</th>
+                <th>Số lượng</th>
+                <th>Trạng thái</th>
+                <th>Lý do</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Dữ liệu sẽ được chèn vào đây bằng JavaScript -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // Hàm format ngày tháng cho đẹp
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('vi-VN');
+    }
+
+    let allData = []; // Biến lưu trữ toàn bộ dữ liệu tải từ server
+    let currentStatus = 1; // Mặc định là Open
+    let sortDirection = 'desc'; // 'asc' (tăng dần) hoặc 'desc' (giảm dần)
+
+    // Hàm render bảng dựa trên dữ liệu đã lọc
+    function renderTable(data) {
+        const tableBody = document.querySelector('#releasingTable tbody');
+        tableBody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Chưa có dữ liệu cho trạng thái này</td></tr>';
+            return;
+        }
+
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            
+            let statusBadge = '';
+            if (item.status === 1) statusBadge = '<span class="status-badge status-new">Open</span>';
+            else if (item.status === 3) statusBadge = '<span class="status-badge status-allocate">Allocate</span>';
+            else if (item.status === 7) statusBadge = '<span class="status-badge status-close">Close</span>';
+            else statusBadge = `<span class="status-badge status-other">${item.status}</span>`;
+
+            row.innerHTML = `
+                <td>${item.id}</td>
+                <td>${item.release_key || ''}</td>
+                <td>${formatDate(item.release_date)}</td>
+                <td><strong>${item.sku || ''}</strong></td>
+                <td>${item.release_qty || 0}</td>
+                <td>${statusBadge}</td>
+                <td>${item.change_reason || ''}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+
+    // Hàm lọc tổng hợp (Logic cốt lõi: Kết hợp cả Status và Search Key)
+    function applyFilters() {
+        const searchKeyword = document.getElementById('skuSearch').value.toLowerCase().trim();
+
+        const filteredData = allData.filter(item => {
+            const matchStatus = item.status === currentStatus;
+            const matchSku = (item.sku || '').toLowerCase().includes(searchKeyword);
+            return matchStatus && matchSku;
+        });
+
+        // Sắp xếp dữ liệu theo ngày
+        filteredData.sort((a, b) => {
+            const dateA = new Date(a.release_date || 0);
+            const dateB = new Date(b.release_date || 0);
+            return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+        });
+
+        renderTable(filteredData);
+    }
+
+    // Hàm đảo ngược trạng thái sắp xếp
+    function toggleSort() {
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        
+        // Cập nhật icon mũi tên
+        document.getElementById('sortIcon').innerText = sortDirection === 'asc' ? '▲' : '▼';
+        
+        applyFilters(); // Gọi lại bộ lọc để sắp xếp và vẽ lại bảng
+    }
+
+    // Hàm xử lý khi bấm Tab
+    function filterTab(status, btnElement) {
+        // Cập nhật giao diện Tab active
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        if (btnElement) btnElement.classList.add('active');
+        
+        // Cập nhật trạng thái hiện tại và áp dụng lại bộ lọc
+        currentStatus = status;
+        applyFilters();
+    }
+
+    // Hàm gọi API để lấy dữ liệu
+    fetch('/api/releasing')
+        .then(response => response.json())
+        .then(data => {
+            allData = data; // Lưu dữ liệu vào biến toàn cục
+            // Mặc định hiển thị Tab Open (status = 1) khi mới vào trang
+            const activeBtn = document.querySelector('.tab-btn.active');
+            filterTab(1, activeBtn);
+        })
+        .catch(error => {
+            console.error('Lỗi:', error);
+            alert('Không thể tải dữ liệu từ server.');
+        });
+
+    // --- HÀM XỬ LÝ IMPORT EXCEL ---
+    function importExcel() {
+        const fileInput = document.getElementById('excelFile');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert('Vui lòng chọn file Excel!');
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+
+            // Lấy sheet đầu tiên
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+
+            // Chuyển đổi sheet thành JSON
+            // raw: false giúp định dạng ngày tháng thành chuỗi thay vì số serial
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
+
+            if (jsonData.length === 0) {
+                alert('File Excel không có dữ liệu!');
+                return;
+            }
+
+            console.log('Dữ liệu đọc từ Excel:', jsonData);
+            
+            // Map dữ liệu để đảm bảo đúng tên cột (nếu cần chuẩn hóa)
+            // Giả sử Excel có header: release_key, release_date, sku, release_qty, status
+            const standardizedData = jsonData.map(row => ({
+                release_key: row['release_key'],
+                release_date: row['release_date'], // Cần đảm bảo định dạng YYYY-MM-DD
+                sku: row['sku'],
+                release_qty: parseInt(row['release_qty']) || 0,
+                status: parseInt(row['status']) || 1
+            }));
+
+            // Gửi dữ liệu lên Server
+            uploadData(standardizedData);
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
+    // --- IMPORT VỚI PROGRESS BAR ---
+    async function uploadData(data) {
+        if (!confirm(`Bạn có chắc muốn import ${data.length} dòng dữ liệu?`)) return;
+
+        // Hiển thị Modal
+        const modal = document.getElementById('progressModal');
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('progressText');
+        const resultBox = document.getElementById('resultBox');
+        
+        modal.style.display = 'flex';
+        resultBox.style.display = 'none'; // Ẩn kết quả cũ
+        pBar.style.width = '0%';
+        pText.innerText = 'Đang chuẩn bị...';
+
+        const BATCH_SIZE = 50; // Số lượng dòng gửi mỗi lần (để thanh tiến trình chạy mượt)
+        let total = data.length;
+        let processed = 0;
+        let stats = { inserted: 0, updated: 0, errors: 0 };
+
+        try {
+            for (let i = 0; i < total; i += BATCH_SIZE) {
+                const batch = data.slice(i, i + BATCH_SIZE);
+                
+                // Gửi batch lên server
+                const response = await fetch('/api/releasing/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(batch)
+                });
+
+                const result = await response.json();
+
+                // Cộng dồn kết quả
+                if (result.stats) {
+                    stats.inserted += result.stats.inserted;
+                    stats.updated += result.stats.updated;
+                    stats.errors += result.stats.errors;
+                }
+
+                // Cập nhật Progress Bar
+                processed += batch.length;
+                const percent = Math.min(100, Math.round((processed / total) * 100));
+                pBar.style.width = percent + '%';
+                pText.innerText = `Đang xử lý: ${percent}% (${processed}/${total})`;
+            }
+
+            // Hoàn tất - Hiển thị kết quả
+            pText.innerText = '✅ Xử lý hoàn tất!';
+            pBar.style.backgroundColor = '#28a745'; // Chuyển màu xanh lá
+            
+            document.getElementById('countNew').innerText = stats.inserted;
+            document.getElementById('countUpdate').innerText = stats.updated;
+            document.getElementById('countError').innerText = stats.errors;
+            resultBox.style.display = 'block';
+
+        } catch (error) {
+            console.error('Lỗi import:', error);
+            pText.innerText = '❌ Có lỗi xảy ra!';
+            pBar.style.backgroundColor = '#dc3545';
+        }
+    }
+</script>
+
+<!-- Modal Progress Bar -->
+<div id="progressModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Đang xử lý dữ liệu</h3>
+        
+        <div class="progress-wrapper">
+            <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <span id="progressText">0%</span>
+
+        <div id="resultBox" class="result-box">
+            <h4>Kết quả:</h4>
+            <div class="result-item">➕ Thêm mới: <span id="countNew" class="res-new">0</span></div>
+            <div class="result-item">✏️ Cập nhật: <span id="countUpdate" class="res-update">0</span></div>
+            <div class="result-item">⚠️ Lỗi: <span id="countError" class="res-error">0</span></div>
+            <div style="text-align: center;">
+                <button class="btn-close" onclick="location.reload()">Đóng & Tải lại trang</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

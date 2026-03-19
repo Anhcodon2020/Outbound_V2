@@ -10,16 +10,31 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            flex-direction: column;
             height: 100vh;
             margin: 0;
             background-color: #f0f2f5;
         }
         h1 {
             color: #333;
+            margin-top: 20px;
         }
+        .nav {
+            background: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .nav a { margin: 0 15px; text-decoration: none; color: #007bff; font-weight: bold; font-size: 1.1em; }
     </style>
 </head>
 <body>
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Danh sách Releasing</a>
+    </div>
+
     <h1>Chào mừng bạn đến với trang web được phục vụ bởi Node.js!</h1>
 </body>
 </html>
