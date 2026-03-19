@@ -1,11 +1,21 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quản lý DSO</title>
-    <!-- Thư viện đọc Excel -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <title>Quáº£n lÃ½ DSO</title>
+    <!-- ThÆ° viá»‡n Ä‘á»c Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">    function currentFiltered() {
+        const term = document.getElementById(\"searchBox\").value.trim().toLowerCase();
+        const filtered = allData.filter(item => item.status_dso == currentStatus);
+        if (!term) return filtered;
+        return filtered.filter(item => {
+            return (item.release_key || "").toLowerCase().includes(term)
+                || (item.child_po || "").toLowerCase().includes(term)
+                || (item.sku || "").toLowerCase().includes(term);
+        });
+    }
+</script>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
         h1 { color: #333; text-align: center; }
@@ -50,24 +60,31 @@
 
 <div class="container">
     <div class="nav">
-        <a href="/">🏠 Trang chủ</a>
-        <a href="/releasing.html">📦 Danh sách Releasing</a>
-        <a href="/dso.html">📄 Danh sách DSO</a>
-        <a href="/bbr.html">📈 BBR Report</a>
+        <a href="/">ðŸ  Trang chá»§</a>
+        <a href="/releasing.html">ðŸ“¦ Danh sÃ¡ch Releasing</a>
+        <a href="/dso.html">ðŸ“„ Danh sÃ¡ch DSO</a>
+        <a href="/bbr.html">ðŸ“ˆ BBR Report</a>
+        <a href="/inventory.html">ðŸ­ Inventory</a>
+        <a href="/check.html">âœ… Check Data</a>
     </div>
 
-    <h1>Quản lý DSO</h1>
+    <h1>Quáº£n lÃ½ DSO</h1>
     
     <div class="import-area">
-        <strong>Nhập liệu từ Excel:</strong>
+        <strong>Nháº­p liá»‡u tá»« Excel:</strong>
         <input type="file" id="excelFile" accept=".xlsx, .xls" />
-        <button class="btn-import" onclick="importExcel()">📤 Tải lên & Xử lý</button>
+        <button class="btn-import" onclick="importExcel()">ðŸ“¤ Táº£i lÃªn & Xá»­ lÃ½</button>
     </div>
 
     <div class="tabs">
         <button class="tab-btn active" onclick="filterTab(1, this)">Open</button>
         <button class="tab-btn" onclick="filterTab(3, this)">Allocate</button>
         <button class="tab-btn" onclick="filterTab(7, this)">Close</button>
+    </div>
+
+    <div style="margin:10px 0; display:flex; gap:8px; align-items:center;">
+        <label for="searchBox"><strong>Search:</strong></label>
+        <input id="searchBox" type="text" placeholder="Release Key / Child PO / SKU" style="flex:1; padding:6px 10px;" oninput="renderTable(currentFiltered())">
     </div>
 
     <table id="dsoTable">
@@ -80,21 +97,22 @@
             </tr>
         </thead>
         <tbody>
-            <!-- Dữ liệu sẽ được chèn vào đây bằng JavaScript -->
+            <!-- Dá»¯ liá»‡u sáº½ Ä‘Æ°á»£c chÃ¨n vÃ o Ä‘Ã¢y báº±ng JavaScript -->
         </tbody>
     </table>
 </div>
 
 <script>
     let allData = []; // Biến lưu trữ toàn bộ dữ liệu
+    let currentStatus = 1;
 
-    // Hàm render bảng dựa trên dữ liệu đã lọc
+    // HÃ m render báº£ng dá»±a trÃªn dá»¯ liá»‡u Ä‘Ã£ lá»c
     function renderTable(data) {
         const tableBody = document.querySelector('#dsoTable tbody');
         tableBody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Chưa có dữ liệu cho trạng thái này</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">ChÆ°a cÃ³ dá»¯ liá»‡u cho tráº¡ng thÃ¡i nÃ y</td></tr>';
             return;
         }
 
@@ -112,34 +130,26 @@
         });
     }
 
-    // Hàm xử lý khi bấm Tab
-    function filterTab(status, btnElement) {
-        // Cập nhật giao diện Tab active
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        if (btnElement) btnElement.classList.add('active');
+    // HÃ m xá»­ lÃ½ khi báº¥m Tab
+    function filterTab(status, btnElement) {\n        currentStatus = status;\n        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));\n        if (btnElement) btnElement.classList.add('active');\n        renderTable(currentFiltered());\n    }
 
-        // Lọc dữ liệu theo status_dso
-        const filteredData = allData.filter(item => item.status_dso == status);
-        renderTable(filteredData);
-    }
-
-    // Tải dữ liệu ban đầu
+    // Táº£i dá»¯ liá»‡u ban Ä‘áº§u
     fetch('/api/dso')
         .then(response => response.json())
         .then(data => {
             allData = data;
-            // Mặc định hiển thị Tab Open (status = 1)
+            // Máº·c Ä‘á»‹nh hiá»ƒn thá»‹ Tab Open (status = 1)
             const activeBtn = document.querySelector('.tab-btn.active');
             filterTab(1, activeBtn);
         })
-        .catch(err => console.error('Lỗi tải dữ liệu:', err));
+        .catch(err => console.error('Lá»—i táº£i dá»¯ liá»‡u:', err));
 
-    // --- HÀM XỬ LÝ IMPORT EXCEL ---
+    // --- HÃ€M Xá»¬ LÃ IMPORT EXCEL ---
     function importExcel() {
         const fileInput = document.getElementById('excelFile');
         const file = fileInput.files[0];
 
-        if (!file) { alert('Vui lòng chọn file Excel!'); return; }
+        if (!file) { alert('Vui lÃ²ng chá»n file Excel!'); return; }
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -149,15 +159,15 @@
             const worksheet = workbook.Sheets[firstSheetName];
             const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
 
-            if (jsonData.length === 0) { alert('File Excel không có dữ liệu!'); return; }
+            if (jsonData.length === 0) { alert('File Excel khÃ´ng cÃ³ dá»¯ liá»‡u!'); return; }
 
-            console.log('Dữ liệu thô:', jsonData);
+            console.log('Dá»¯ liá»‡u thÃ´:', jsonData);
 
-            // Map dữ liệu theo yêu cầu: release_key, status, huser_defined_02
+            // Map dá»¯ liá»‡u theo yÃªu cáº§u: release_key, status, huser_defined_02
             const standardizedData = jsonData.map(row => ({
                 release_key: row['release_key'],
                 status: parseInt(row['status']) || 1,
-                huser_defined_02: row['huser_defined_02'] // Dùng để insert vào child_po
+                huser_defined_02: row['huser_defined_02'] // DÃ¹ng Ä‘á»ƒ insert vÃ o child_po
             }));
 
             uploadData(standardizedData);
@@ -165,9 +175,9 @@
         reader.readAsArrayBuffer(file);
     }
 
-    // --- UPLOAD VỚI PROGRESS BAR ---
+    // --- UPLOAD Vá»šI PROGRESS BAR ---
     async function uploadData(data) {
-        if (!confirm(`Bạn có chắc muốn import ${data.length} dòng dữ liệu DSO?`)) return;
+        if (!confirm(`Báº¡n cÃ³ cháº¯c muá»‘n import ${data.length} dÃ²ng dá»¯ liá»‡u DSO?`)) return;
 
         const modal = document.getElementById('progressModal');
         const pBar = document.getElementById('progressBar');
@@ -177,7 +187,7 @@
         modal.style.display = 'flex';
         resultBox.style.display = 'none';
         pBar.style.width = '0%';
-        pText.innerText = 'Đang chuẩn bị...';
+        pText.innerText = 'Äang chuáº©n bá»‹...';
 
         const BATCH_SIZE = 50;
         let total = data.length;
@@ -205,10 +215,10 @@
                 processed += batch.length;
                 const percent = Math.min(100, Math.round((processed / total) * 100));
                 pBar.style.width = percent + '%';
-                pText.innerText = `Đang xử lý: ${percent}% (${processed}/${total})`;
+                pText.innerText = `Äang xá»­ lÃ½: ${percent}% (${processed}/${total})`;
             }
 
-            pText.innerText = '✅ Xử lý hoàn tất!';
+            pText.innerText = 'âœ… Xá»­ lÃ½ hoÃ n táº¥t!';
             pBar.style.backgroundColor = '#28a745';
             
             document.getElementById('countNew').innerText = stats.inserted;
@@ -217,30 +227,42 @@
             resultBox.style.display = 'block';
 
         } catch (error) {
-            console.error('Lỗi import:', error);
-            pText.innerText = '❌ Có lỗi xảy ra!';
+            console.error('Lá»—i import:', error);
+            pText.innerText = 'âŒ CÃ³ lá»—i xáº£y ra!';
             pBar.style.backgroundColor = '#dc3545';
         }
+    }
+    function currentFiltered() {
+        const term = document.getElementById(\"searchBox\").value.trim().toLowerCase();
+        const filtered = allData.filter(item => item.status_dso == currentStatus);
+        if (!term) return filtered;
+        return filtered.filter(item => {
+            return (item.release_key || "").toLowerCase().includes(term)
+                || (item.child_po || "").toLowerCase().includes(term)
+                || (item.sku || "").toLowerCase().includes(term);
+        });
     }
 </script>
 
 <!-- Modal Progress Bar -->
 <div id="progressModal" class="modal-overlay">
     <div class="modal-content">
-        <h3>Đang xử lý dữ liệu DSO</h3>
+        <h3>Äang xá»­ lÃ½ dá»¯ liá»‡u DSO</h3>
         <div class="progress-wrapper">
             <div id="progressBar" class="progress-bar"></div>
         </div>
         <span id="progressText">0%</span>
         <div id="resultBox" class="result-box">
-            <h4>Kết quả:</h4>
-            <div class="result-item">➕ Thêm mới: <span id="countNew" class="res-new">0</span></div>
-            <div class="result-item">✏️ Cập nhật: <span id="countUpdate" class="res-update">0</span></div>
-            <div class="result-item">⚠️ Lỗi: <span id="countError" class="res-error">0</span></div>
-            <div style="text-align: center;"><button class="btn-close" onclick="location.reload()">Đóng & Tải lại</button></div>
+            <h4>Káº¿t quáº£:</h4>
+            <div class="result-item">âž• ThÃªm má»›i: <span id="countNew" class="res-new">0</span></div>
+            <div class="result-item">âœï¸ Cáº­p nháº­t: <span id="countUpdate" class="res-update">0</span></div>
+            <div class="result-item">âš ï¸ Lá»—i: <span id="countError" class="res-error">0</span></div>
+            <div style="text-align: center;"><button class="btn-close" onclick="location.reload()">ÄÃ³ng & Táº£i láº¡i</button></div>
         </div>
     </div>
 </div>
 
 </body>
 </html>
+
+

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý Master Data</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
+        h1 { color: #333; text-align: center; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        .import-area { margin-bottom: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; display: flex; gap: 10px; align-items: center; }
+        .btn-import { padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-import:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Releasing</a>
+        <a href="/dso.html">📄 DSO</a>
+        <a href="/bbr.html">📈 BBR Report</a>
+        <a href="/inventory.html">🏭 Inventory</a>
+        <a href="/masterdata.html">🗂️ Master Data</a>
+        <a href="/check.html">✅ Check Data</a>
+        <a href="/allowcate.html">📋 Allocate</a>
+    </div>
+
+    <h1>Master Data</h1>
+
+    <div class="import-area">
+        <strong>Import Excel (Cập nhật theo SKU):</strong>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" />
+        <button class="btn-import" onclick="importExcel()">📤 Tải lên</button>
+    </div>
+    
+    <table id="mdTable">
+        <thead>
+            <tr>
+                <th>MANCC</th>
+                <th>SKU</th>
+                <th>Description</th>
+                <th>Weight</th>
+                <th>L x W x H</th>
+                <th>CBM</th>
+                <th>Carton/Pallet</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+    // Tải dữ liệu
+    function loadData() {
+        fetch('/api/masterdata')
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.querySelector('#mdTable tbody');
+                tbody.innerHTML = '';
+                if(!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">Chưa có dữ liệu</td></tr>';
+                    return;
+                }
+                data.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.MANCC}</td>
+                        <td><strong>${item.sku}</strong></td>
+                        <td>${item.description || ''}</td>
+                        <td>${item.weight || 0}</td>
+                        <td>${item.length || 0} x ${item.width || 0} x ${item.height || 0}</td>
+                        <td>${item.cbm || 0}</td>
+                        <td>${item.cartonperpallet || 0}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            })
+            .catch(err => console.error(err));
+    }
+
+    loadData();
+
+    // Import Excel
+    function importExcel() {
+        const fileInput = document.getElementById('excelFile');
+        const file = fileInput.files[0];
+        if (!file) { alert('Vui lòng chọn file Excel!'); return; }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+
+            if (jsonData.length === 0) return;
+
+            // Map dữ liệu (Giả sử file Excel có header đúng tên cột DB hoặc tương tự)
+            const mapping = jsonData.map(row => ({
+                MANCC: row['MANCC'] || 'NCC_DEFAULT', // Mặc định nếu thiếu
+                sku: row['sku'] || row['SKU'],
+                description: row['description'],
+                quantity: parseInt(row['quantity']) || 0,
+                weight: parseFloat(row['weight']) || 0,
+                length: parseFloat(row['length']) || 0,
+                width: parseFloat(row['width']) || 0,
+                height: parseFloat(row['height']) || 0,
+                cbm: parseFloat(row['cbm']) || 0,
+                refix: row['refix'],
+                remark: row['remark'],
+                loosecase: row['loosecase'],
+                cartonperpallet: parseInt(row['cartonperpallet']) || 0,
+                kindpallet: row['kindpallet'],
+                chipboard: row['chipboard']
+            }));
+
+            uploadData(mapping);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function uploadData(data) {
+        if(!confirm(`Import ${data.length} dòng Master Data?`)) return;
+        
+        fetch('/api/masterdata/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(res => res.json())
+        .then(result => {
+            alert(`Hoàn tất!\nThêm: ${result.stats.inserted}\nCập nhật: ${result.stats.updated}\nLỗi: ${result.stats.errors}`);
+            loadData();
+        })
+        .catch(err => alert('Lỗi: ' + err));
+    }
+</script>
+</body>
+</html>

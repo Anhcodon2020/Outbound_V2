@@ -1,0 +1,301 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phân bổ Hàng hóa (Allocate)</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
+        h1, h2 { color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        .missing-data { color: #dc3545; font-style: italic; }
+        .has-stock { color: #28a745; font-weight: bold; }
+        .filter-row { margin: 10px 0; display: flex; gap: 10px; align-items: center; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Releasing</a>
+        <a href="/dso.html">📄 DSO</a>
+        <a href="/bbr.html">📈 BBR Report</a>
+        <a href="/inventory.html">🏭 Inventory</a>
+        <a href="/masterdata.html">🗂️ Master Data</a>
+        <a href="/check.html">✅ Check Data</a>
+        <a href="/allowcate.html">📋 Allocate</a>
+    </div>
+
+    <div class="filter-row">
+        <label for="hubFilter"><strong>Chọn Hub DC:</strong></label>
+        <select id="hubFilter" onchange="renderAll()">
+            <option value="">Tất cả Hub</option>
+        </select>
+        <span id="statusText" style="color:#666;"></span>
+    </div>
+
+    <h1>Thống kê theo Hub DC (Tồn > Cần)</h1>
+    <table id="fdcSummary">
+        <thead>
+            <tr>
+                <th>Hub DC</th>
+                <th>Tổng Carton</th>
+                <th>Tổng CBM</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="3" style="text-align:center">Đang tải...</td></tr>
+        </tbody>
+    </table>
+
+    <h2 style="margin-top:24px;">Phân bổ Hàng hóa (Status = 1)</h2>
+    <p><i>Sắp xếp ưu tiên: Ngày nhập kho (Date Rcv) tăng dần</i></p>
+    <table id="allocTable">
+        <thead>
+            <tr>
+                <th>Release Key</th>
+                <th>Ngày Release</th>
+                <th>SKU</th>
+                <th>SL Cần Xuất</th>
+                <th>Child PO (DSO)</th>
+                <th>Parent PO (BBR)</th>
+                <th>FDC </th>
+                <th>Hub DC</th>
+                <th>Tồn kho (Carton)</th>
+                <th>Ngày Nhập (Date Rcv)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="10" style="text-align:center">Đang tải...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Popup chi tiết -->
+<div id="detailModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); align-items:center; justify-content:center; z-index:1000;">
+    <div style="background:#fff; min-width:320px; max-width:480px; padding:16px 20px; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.2); position:relative;">
+        <button id="modalClose" style="position:absolute; top:10px; right:10px; border:none; background:#eee; border-radius:4px; padding:4px 8px; cursor:pointer;">Đóng</button>
+        <h3 style="margin:0 0 12px 0;">Thông tin Release</h3>
+        <div id="modalBody" style="display:grid; grid-template-columns:120px 1fr; row-gap:8px; column-gap:10px; font-size:14px;"></div>
+    </div>
+</div>
+
+<script>
+    const state = { allocate: [], dc: [], master: [] };
+
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('vi-VN');
+    }
+
+    async function loadData() {
+        const status = document.getElementById('statusText');
+        status.textContent = 'Đang tải dữ liệu...';
+        try {
+            const [allocRes, dcRes, masterRes] = await Promise.all([
+                fetch('/api/allocate'),
+                fetch('/api/dc'),
+                fetch('/api/masterdata')
+            ]);
+
+            state.allocate = await allocRes.json();
+            state.dc = await dcRes.json();
+            state.master = await masterRes.json();
+            if (!Array.isArray(state.master)) state.master = [];
+
+            buildHubOptions();
+            renderAll();
+            status.textContent = '';
+        } catch (err) {
+            console.error('Lỗi tải dữ liệu:', err);
+            status.textContent = 'Không tải được dữ liệu. Xem console.';
+        }
+    }
+
+    function buildHubOptions() {
+        const select = document.getElementById('hubFilter');
+        const seen = new Set();
+        (Array.isArray(state.dc) ? state.dc : []).forEach(dc => {
+            const hub = dc.hub_dc || dc.hub;
+            if (hub && !seen.has(hub)) {
+                seen.add(hub);
+                const opt = document.createElement('option');
+                opt.value = hub;
+                opt.textContent = hub;
+                select.appendChild(opt);
+            }
+        });
+    }
+
+    function renderAll() {
+        renderDetailTable();
+        renderHubSummary();
+    }
+
+    function renderDetailTable() {
+        const tbody = document.querySelector('#allocTable tbody');
+        const selectedHub = document.getElementById('hubFilter').value;
+        if (!state.allocate || state.allocate.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center">Không có dữ liệu Allocate</td></tr>';
+            return;
+        }
+
+        // Map DC theo code_dc dạng số (so khớp với 3 ký tự đầu của child_po)
+        const dcMap = new Map(
+            (Array.isArray(state.dc) ? state.dc : [])
+                .map(dc => {
+                    const keyNum = Number(dc.code_dc ?? dc.hub_dc);
+                    return Number.isNaN(keyNum) ? null : [keyNum, dc];
+                })
+                .filter(Boolean)
+        );
+
+        const data = state.allocate
+            .slice()
+            // Sắp xếp theo tồn kho (carton) giảm dần, rồi đến ngày nhận tăng dần
+            .sort((a, b) => {
+                const invA = Number(a.qty_invetory) || 0;
+                const invB = Number(b.qty_invetory) || 0;
+                if (invA !== invB) return invB - invA;
+                return (a.date_rcv || '').localeCompare(b.date_rcv || '');
+            })
+            .filter(item => {
+                if (!selectedHub) return true;
+                const hubCodeNum = Number((item.child_po || '').toString().substring(0,3));
+                const dcInfo = dcMap.get(hubCodeNum);
+                return dcInfo && (dcInfo.hub_dc || dcInfo.hub) === selectedHub;
+            });
+
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center">Không có dòng nào phù hợp bộ lọc</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            const hubCodeNum = Number((item.child_po || '').toString().substring(0,3));
+            const dcInfo = dcMap.get(hubCodeNum);
+            const hubName = dcInfo ? (dcInfo.hub_dc || dcInfo.hub || hubCodeNum) : '';
+            const fdcName = dcInfo ? (dcInfo.fdc || dcInfo.fdc_name || '') : '';
+            const fdcCode = Number.isNaN(hubCodeNum) ? '' : hubCodeNum;
+
+            const childPo = item.child_po || '<span class="missing-data">Thiếu DSO</span>';
+            const parentPo = item.parent_po || '<span class="missing-data">Thiếu BBR</span>';
+            const invQty = item.qty_invetory != null ? `<span class="has-stock">${item.qty_invetory}</span>` : '<span class="missing-data">0</span>';
+            const dateRcv = item.date_rcv ? formatDate(item.date_rcv) : '';
+            const releaseDate = item.release_date ? formatDate(item.release_date) : '';
+
+            row.innerHTML = `
+                <td>${item.release_key ?? ''}</td>
+                <td>${releaseDate}</td>
+                <td>${item.sku ?? ''}</td>
+                <td>${item.release_qty ?? 0}</td>
+                <td>${childPo}</td>
+                <td>${parentPo}</td>
+                <td>${fdcName || fdcCode}</td>
+                <td>${hubName}</td>
+                <td>${invQty}</td>
+                <td>${dateRcv}</td>
+            `;
+            tbody.appendChild(row);
+
+            // mở popup khi bấm dòng
+            row.style.cursor = 'pointer';
+            row.addEventListener('click', () => openDetailModal({
+                release_key: item.release_key,
+                parent_po: item.parent_po,
+                child_po: item.child_po,
+                sku: item.sku,
+                release_qty: item.release_qty
+            }));
+        });
+    }
+
+    function renderHubSummary() {
+        const tbody = document.querySelector('#fdcSummary tbody');
+        const selectedHub = document.getElementById('hubFilter').value;
+        if (!state.allocate || state.allocate.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Không có dữ liệu Allocate</td></tr>';
+            return;
+        }
+
+        const cbmMap = new Map(
+            (Array.isArray(state.master) ? state.master : []).map(item => [item.sku, parseFloat(item.cbm) || 0])
+        );
+        const dcMap = new Map(
+            (Array.isArray(state.dc) ? state.dc : [])
+                .map(dc => {
+                    const keyNum = Number(dc.code_dc ?? dc.hub_dc);
+                    return Number.isNaN(keyNum) ? null : [keyNum, dc];
+                })
+                .filter(Boolean)
+        );
+
+        const summary = {};
+        state.allocate.forEach(item => {
+            const hubCodeNum = Number((item.child_po || '').toString().substring(0,3));
+            const dcInfo = dcMap.get(hubCodeNum);
+            const hub = dcInfo ? (dcInfo.hub_dc || dcInfo.hub) : null;
+            if (!hub) return;
+            if (selectedHub && hub !== selectedHub) return;
+
+            const releaseQty = Number(item.release_qty) || 0;
+            const inventoryQty = Number(item.qty_invetory) || 0;
+            if (inventoryQty <= releaseQty) return; // chỉ tính khi tồn > cần
+
+            const cbmPerCarton = cbmMap.get(item.sku) || 0;
+            if (!summary[hub]) summary[hub] = { cartons: 0, cbm: 0 };
+            summary[hub].cartons += releaseQty;
+            summary[hub].cbm += releaseQty * cbmPerCarton;
+        });
+
+        const keys = Object.keys(summary);
+        if (keys.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Không có dữ liệu phù hợp để thống kê</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        keys.forEach(hub => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${hub}</strong></td>
+                <td>${summary[hub].cartons}</td>
+                <td>${summary[hub].cbm.toFixed(4)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    loadData();
+
+    // -------- Popup helper --------
+    const modal = document.getElementById('detailModal');
+    const modalBody = document.getElementById('modalBody');
+    const modalClose = document.getElementById('modalClose');
+
+    function openDetailModal(detail) {
+        modalBody.innerHTML = `
+            <div><strong>Release Key</strong></div><div>${detail.release_key ?? ''}</div>
+            <div><strong>Parent PO</strong></div><div>${detail.parent_po ?? ''}</div>
+            <div><strong>Child PO</strong></div><div>${detail.child_po ?? ''}</div>
+            <div><strong>SKU</strong></div><div>${detail.sku ?? ''}</div>
+            <div><strong>SL cần xuất</strong></div><div>${detail.release_qty ?? 0}</div>
+        `;
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() { modal.style.display = 'none'; }
+    modalClose.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+</script>
+</body>
+</html>

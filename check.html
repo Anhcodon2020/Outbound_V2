@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiểm tra dữ liệu (Check Data)</title>
+    <!-- Thư viện xuất Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
+        h1 { color: #333; text-align: center; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        
+        /* Style cảnh báo lệch số lượng */
+        .diff-row { background-color: #f8d7da; }
+        .diff-row td { color: #721c24; font-weight: bold; }
+        .match-row { background-color: #d4edda; }
+        .btn-export { padding: 5px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 20px; font-size: 14px; }
+        .btn-export:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Danh sách Releasing</a>
+        <a href="/dso.html">📄 Danh sách DSO</a>
+        <a href="/bbr.html">📈 BBR Report</a>
+        <a href="/inventory.html">🏭 Inventory</a>
+        <a href="/check.html">✅ Check Data</a>
+    </div>
+
+    <h1>Bảng Đối Chiếu Dữ Liệu (Status = 3)</h1>
+    
+    <div style="margin-bottom: 15px;">
+        <label style="font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="diffFilter" onchange="toggleDiff()"> ⚠️ Chỉ hiện dòng lệch số lượng
+        </label>
+        <button class="btn-export" onclick="exportToExcel()">📥 Xuất Excel</button>
+    </div>
+
+    <table id="checkTable">
+        <thead>
+            <tr>
+                <th>Release Key</th>
+                <th>SKU</th>
+                <th>Release Qty</th>
+                <th>Child PO (DSO)</th>
+                <th>Parent PO (BBR)</th>
+                <th>Qty BBR</th>
+                <th>Trạng thái</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Dữ liệu sẽ được chèn vào đây -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    let allData = [];
+
+    // Hàm render bảng
+    function renderTable(data) {
+        const tableBody = document.querySelector('#checkTable tbody');
+        tableBody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Không có dữ liệu phù hợp</td></tr>';
+            return;
+        }
+
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            
+            // So sánh số lượng
+            const rQty = item.release_qty || 0;
+            const bQty = item.qty_bbr || 0;
+            let statusText = 'Khớp';
+
+            if (rQty !== bQty) {
+                row.classList.add('diff-row');
+                statusText = '⚠️ Lệch';
+            }
+
+            row.innerHTML = `<td>${item.release_key}</td><td>${item.sku}</td><td>${rQty}</td><td>${item.child_po || '<span style="color:red">N/A</span>'}</td><td>${item.parent_po || '<span style="color:red">N/A</span>'}</td><td>${bQty}</td><td>${statusText}</td>`;
+            tableBody.appendChild(row);
+        });
+    }
+
+    // Hàm xử lý bộ lọc
+    function toggleDiff() {
+        const isChecked = document.getElementById('diffFilter').checked;
+        if (isChecked) {
+            const filtered = allData.filter(item => (item.release_qty || 0) !== (item.qty_bbr || 0));
+            renderTable(filtered);
+        } else {
+            renderTable(allData);
+        }
+    }
+
+    // Hàm xuất Excel
+    function exportToExcel() {
+        const isChecked = document.getElementById('diffFilter').checked;
+        let dataToExport = allData;
+        
+        // Nếu đang lọc, chỉ xuất dữ liệu lọc
+        if (isChecked) {
+            dataToExport = allData.filter(item => (item.release_qty || 0) !== (item.qty_bbr || 0));
+        }
+
+        if (!dataToExport || dataToExport.length === 0) {
+            alert('Không có dữ liệu để xuất!');
+            return;
+        }
+
+        // Map dữ liệu sang format đẹp hơn cho Excel
+        const excelData = dataToExport.map(item => {
+            const rQty = item.release_qty || 0;
+            const bQty = item.qty_bbr || 0;
+            return {
+                'Release Key': item.release_key,
+                'SKU': item.sku,
+                'Release Qty': rQty,
+                'Child PO': item.child_po || '',
+                'Parent PO': item.parent_po || '',
+                'Qty BBR': bQty,
+                'Trạng thái': rQty !== bQty ? 'Lệch' : 'Khớp'
+            };
+        });
+
+        // Tạo Workbook và xuất file
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        XLSX.utils.book_append_sheet(wb, ws, "CheckData");
+        XLSX.writeFile(wb, "Check_Data_Report.xlsx");
+    }
+
+    fetch('/api/check')
+        .then(response => response.json())
+        .then(data => {
+            allData = data;
+            renderTable(data);
+        })
+        .catch(err => {
+            console.error('Lỗi tải dữ liệu check:', err);
+        });
+</script>
+
+</body>
+</html>
