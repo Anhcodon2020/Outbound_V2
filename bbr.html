@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BBR Report</title>
+    <!-- Thư viện đọc Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
+        h1 { color: #333; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        /* Style cho Import Area */
+        .import-area { margin-bottom: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; display: flex; gap: 10px; align-items: center; }
+        .btn-import { padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-import:hover { background-color: #218838; }
+        /* Style cho Progress Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .progress-wrapper { width: 100%; background-color: #e9ecef; border-radius: 10px; margin: 15px 0; overflow: hidden; }
+        .progress-bar { width: 0%; height: 20px; background-color: #007bff; transition: width 0.3s ease; }
+        .progress-text { font-weight: bold; margin-bottom: 5px; display: block; }
+        /* Style cho Result Summary */
+        .result-box { display: none; margin-top: 15px; text-align: left; background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #ddd; }
+        .result-item { margin: 5px 0; font-size: 14px; }
+        .res-new { color: #28a745; font-weight: bold; }
+        .res-update { color: #ffc107; font-weight: bold; }
+        .res-error { color: #dc3545; font-weight: bold; }
+        .btn-close { margin-top: 15px; padding: 8px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-close:hover { background-color: #5a6268; }
+        /* Style cảnh báo cho dòng có Qty = 0 */
+        .warning-row { background-color: #f8d7da; }
+        .warning-row td { color: #721c24; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Danh sách Releasing</a>
+        <a href="/dso.html">📄 Danh sách DSO</a>
+        <a href="/bbr.html">📈 BBR Report</a>
+    </div>
+
+    <h1>BBR Report</h1>
+
+    <div class="import-area">
+        <strong>Nhập liệu từ Excel (Header dòng 4):</strong>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" />
+        <button class="btn-import" onclick="importExcel()">📤 Tải lên & Xử lý</button>
+    </div>
+    
+    <table id="bbrTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Child PO</th>
+                <th>Parent PO</th>
+                <th>SKU</th>
+                <th>Qty BBR</th>
+                <th>Remark</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Dữ liệu sẽ được chèn vào đây bằng JavaScript -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    fetch('/api/bbr')
+        .then(response => response.json())
+        .then(data => {
+            const tableBody = document.querySelector('#bbrTable tbody');
+            if (!data || data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Chưa có dữ liệu</td></tr>';
+                return;
+            }
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                
+                // Kiểm tra nếu Qty BBR là 0 hoặc không có dữ liệu (null) thì thêm class cảnh báo
+                const displayQty = item.qty_bbr || 0;
+                if (displayQty === 0) {
+                    row.classList.add('warning-row');
+                }
+
+                row.innerHTML = `
+                    <td>${item.id}</td>
+                    <td>${item.child_po || ''}</td>
+                    <td>${item.parent_po || ''}</td>
+                    <td>${item.sku || ''}</td>
+                    <td>${displayQty}</td>
+                    <td>${item.remark || ''}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        })
+        .catch(err => {
+            console.error('Lỗi tải dữ liệu BBR:', err);
+            alert('Không thể tải dữ liệu BBR từ server.');
+        });
+
+    // --- HÀM XỬ LÝ IMPORT EXCEL ---
+    function importExcel() {
+        const fileInput = document.getElementById('excelFile');
+        const file = fileInput.files[0];
+
+        if (!file) { alert('Vui lòng chọn file Excel!'); return; }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // Header là dòng 4 -> range: 3 (vì index bắt đầu từ 0)
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 3, raw: false });
+
+            if (jsonData.length === 0) { alert('File Excel không có dữ liệu!'); return; }
+
+            console.log('Dữ liệu thô (dòng đầu):', jsonData[0]);
+
+            const standardizedData = [];
+            
+            jsonData.forEach(row => {
+                const poNumber = row['PO NUMBER'];
+                // Kiểm tra PO NUMBER khác rỗng
+                if (!poNumber || poNumber.toString().trim() === '') return;
+
+                const qty = parseFloat(row['QTY']) || 0;
+                const qtyPerPck = parseFloat(row['QTY per PCK']) || 1; // Tránh chia cho 0
+                const calculatedQty = Math.floor(qty / qtyPerPck); // Tính toán QTY/QTY per PCK
+
+                standardizedData.push({
+                    child_po: poNumber,
+                    parent_po: row['PARENT PO'],
+                    sku: row['ITEM NO'],
+                    qty_bbr: calculatedQty
+                });
+            });
+
+            uploadData(standardizedData);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // --- UPLOAD VỚI PROGRESS BAR ---
+    async function uploadData(data) {
+        if (data.length === 0) { alert('Không có dữ liệu hợp lệ để import!'); return; }
+        if (!confirm(`Bạn có chắc muốn import ${data.length} dòng dữ liệu BBR?`)) return;
+
+        const modal = document.getElementById('progressModal');
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('progressText');
+        const resultBox = document.getElementById('resultBox');
+        
+        modal.style.display = 'flex';
+        resultBox.style.display = 'none';
+        pBar.style.width = '0%';
+        pText.innerText = 'Đang chuẩn bị...';
+
+        const BATCH_SIZE = 50;
+        let total = data.length;
+        let processed = 0;
+        let stats = { inserted: 0, updated: 0, errors: 0 };
+
+        try {
+            for (let i = 0; i < total; i += BATCH_SIZE) {
+                const batch = data.slice(i, i + BATCH_SIZE);
+                const response = await fetch('/api/bbr/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(batch)
+                });
+                const result = await response.json();
+
+                if (result.stats) {
+                    stats.inserted += result.stats.inserted;
+                    stats.updated += result.stats.updated;
+                    stats.errors += result.stats.errors;
+                }
+                processed += batch.length;
+                const percent = Math.min(100, Math.round((processed / total) * 100));
+                pBar.style.width = percent + '%';
+                pText.innerText = `Đang xử lý: ${percent}% (${processed}/${total})`;
+            }
+
+            pText.innerText = '✅ Xử lý hoàn tất!';
+            pBar.style.backgroundColor = '#28a745';
+            document.getElementById('countNew').innerText = stats.inserted;
+            document.getElementById('countUpdate').innerText = stats.updated;
+            document.getElementById('countError').innerText = stats.errors;
+            resultBox.style.display = 'block';
+        } catch (error) {
+            console.error('Lỗi import:', error);
+            pText.innerText = '❌ Có lỗi xảy ra!';
+            pBar.style.backgroundColor = '#dc3545';
+        }
+    }
+</script>
+
+<!-- Modal Progress Bar -->
+<div id="progressModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Đang xử lý dữ liệu BBR</h3>
+        <div class="progress-wrapper"><div id="progressBar" class="progress-bar"></div></div>
+        <span id="progressText">0%</span>
+        <div id="resultBox" class="result-box">
+            <h4>Kết quả:</h4>
+            <div class="result-item">➕ Thêm mới: <span id="countNew" class="res-new">0</span></div>
+            <div class="result-item">✏️ Cập nhật: <span id="countUpdate" class="res-update">0</span></div>
+            <div class="result-item">⚠️ Lỗi: <span id="countError" class="res-error">0</span></div>
+            <div style="text-align: center;"><button class="btn-close" onclick="location.reload()">Đóng & Tải lại</button></div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
