@@ -76,6 +76,7 @@
 
     <div class="search-container">
         <input type="text" id="skuSearch" class="search-input" placeholder="🔍 Tìm kiếm theo SKU..." oninput="applyFilters()">
+        <input type="text" id="releaseKeySearch" class="search-input" placeholder="🔑 Tìm theo Release Key..." style="margin-left:10px" oninput="applyFilters()">
     </div>
 
     <div class="tabs">
@@ -148,12 +149,14 @@
 
     // Hàm lọc tổng hợp (Logic cốt lõi: Kết hợp cả Status và Search Key)
     function applyFilters() {
-        const searchKeyword = document.getElementById('skuSearch').value.toLowerCase().trim();
+        const searchSku = document.getElementById('skuSearch').value.toLowerCase().trim();
+        const searchReleaseKey = document.getElementById('releaseKeySearch').value.toLowerCase().trim();
 
         const filteredData = allData.filter(item => {
             const matchStatus = item.status === currentStatus;
-            const matchSku = (item.sku || '').toLowerCase().includes(searchKeyword);
-            return matchStatus && matchSku;
+            const matchSku = (item.sku || '').toLowerCase().includes(searchSku);
+            const matchKey = (item.release_key || '').toLowerCase().includes(searchReleaseKey);
+            return matchStatus && matchSku && matchKey;
         });
 
         // Sắp xếp dữ liệu theo ngày

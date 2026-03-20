@@ -3,19 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quáº£n lÃ½ DSO</title>
-    <!-- ThÆ° viá»‡n Ä‘á»c Excel -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">    function currentFiltered() {
-        const term = document.getElementById(\"searchBox\").value.trim().toLowerCase();
-        const filtered = allData.filter(item => item.status_dso == currentStatus);
-        if (!term) return filtered;
-        return filtered.filter(item => {
-            return (item.release_key || "").toLowerCase().includes(term)
-                || (item.child_po || "").toLowerCase().includes(term)
-                || (item.sku || "").toLowerCase().includes(term);
-        });
-    }
-</script>
+    <title>Quản lý DSO</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
         h1 { color: #333; text-align: center; }
@@ -31,25 +20,9 @@
         .status-other { background-color: #6c757d; }
         .nav { margin-bottom: 20px; }
         .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
-        /* Style cho Import Area */
         .import-area { margin-bottom: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; display: flex; gap: 10px; align-items: center; }
         .btn-import { padding: 8px 15px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
         .btn-import:hover { background-color: #218838; }
-        /* Style cho Progress Modal */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .progress-wrapper { width: 100%; background-color: #e9ecef; border-radius: 10px; margin: 15px 0; overflow: hidden; }
-        .progress-bar { width: 0%; height: 20px; background-color: #007bff; transition: width 0.3s ease; }
-        .progress-text { font-weight: bold; margin-bottom: 5px; display: block; }
-        /* Style cho Result Summary */
-        .result-box { display: none; margin-top: 15px; text-align: left; background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #ddd; }
-        .result-item { margin: 5px 0; font-size: 14px; }
-        .res-new { color: #28a745; font-weight: bold; }
-        .res-update { color: #ffc107; font-weight: bold; }
-        .res-error { color: #dc3545; font-weight: bold; }
-        .btn-close { margin-top: 15px; padding: 8px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .btn-close:hover { background-color: #5a6268; }
-        /* Style cho Tabs */
         .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e9ecef; }
         .tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 16px; font-weight: bold; color: #6c757d; border-bottom: 3px solid transparent; transition: all 0.3s; }
         .tab-btn:hover { background-color: #f8f9fa; color: #0056b3; }
@@ -60,20 +33,20 @@
 
 <div class="container">
     <div class="nav">
-        <a href="/">ðŸ  Trang chá»§</a>
-        <a href="/releasing.html">ðŸ“¦ Danh sÃ¡ch Releasing</a>
-        <a href="/dso.html">ðŸ“„ Danh sÃ¡ch DSO</a>
-        <a href="/bbr.html">ðŸ“ˆ BBR Report</a>
-        <a href="/inventory.html">ðŸ­ Inventory</a>
-        <a href="/check.html">âœ… Check Data</a>
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Danh sách Releasing</a>
+        <a href="/dso.html">📄 Danh sách DSO</a>
+        <a href="/bbr.html">📈 BBR Report</a>
+        <a href="/inventory.html">🏭 Inventory</a>
+        <a href="/check.html">✅ Check Data</a>
     </div>
 
-    <h1>Quáº£n lÃ½ DSO</h1>
+    <h1>Quản lý DSO</h1>
     
     <div class="import-area">
-        <strong>Nháº­p liá»‡u tá»« Excel:</strong>
+        <strong>Nhập liệu từ Excel:</strong>
         <input type="file" id="excelFile" accept=".xlsx, .xls" />
-        <button class="btn-import" onclick="importExcel()">ðŸ“¤ Táº£i lÃªn & Xá»­ lÃ½</button>
+        <button class="btn-import" onclick="importExcel()">📤 Tải lên & Xử lý</button>
     </div>
 
     <div class="tabs">
@@ -97,172 +70,94 @@
             </tr>
         </thead>
         <tbody>
-            <!-- Dá»¯ liá»‡u sáº½ Ä‘Æ°á»£c chÃ¨n vÃ o Ä‘Ã¢y báº±ng JavaScript -->
+            <!-- dữ liệu sẽ được chèn bằng JS -->
         </tbody>
     </table>
 </div>
 
 <script>
-    let allData = []; // Biến lưu trữ toàn bộ dữ liệu
+    let allData = [];
     let currentStatus = 1;
 
-    // HÃ m render báº£ng dá»±a trÃªn dá»¯ liá»‡u Ä‘Ã£ lá»c
     function renderTable(data) {
         const tableBody = document.querySelector('#dsoTable tbody');
         tableBody.innerHTML = '';
-
         if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">ChÆ°a cÃ³ dá»¯ liá»‡u cho tráº¡ng thÃ¡i nÃ y</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Chưa có dữ liệu cho trạng thái này</td></tr>';
             return;
         }
-
         data.forEach(item => {
             const row = document.createElement('tr');
-            
             let statusHtml = '';
             if (item.status_dso == 1) statusHtml = '<span class="status-badge status-new">Open</span>';
             else if (item.status_dso == 3) statusHtml = '<span class="status-badge status-allocate">Allocate</span>';
             else if (item.status_dso == 7) statusHtml = '<span class="status-badge status-close">Close</span>';
             else statusHtml = `<span class="status-badge status-other">${item.status_dso || ''}</span>`;
-
             row.innerHTML = `<td>${item.id}</td><td>${item.release_key || ''}</td><td>${statusHtml}</td><td>${item.child_po || ''}</td>`;
             tableBody.appendChild(row);
         });
     }
 
-    // HÃ m xá»­ lÃ½ khi báº¥m Tab
-    function filterTab(status, btnElement) {\n        currentStatus = status;\n        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));\n        if (btnElement) btnElement.classList.add('active');\n        renderTable(currentFiltered());\n    }
+    function filterTab(status, btnElement) {
+        currentStatus = status;
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        if (btnElement) btnElement.classList.add('active');
+        renderTable(currentFiltered());
+    }
 
-    // Táº£i dá»¯ liá»‡u ban Ä‘áº§u
+    function currentFiltered() {
+        const term = document.getElementById('searchBox').value.trim().toLowerCase();
+        const filtered = allData.filter(item => item.status_dso == currentStatus);
+        if (!term) return filtered;
+        return filtered.filter(item => (item.release_key || '').toLowerCase().includes(term)
+            || (item.child_po || '').toLowerCase().includes(term)
+            || (item.sku || '').toLowerCase().includes(term));
+    }
+
     fetch('/api/dso')
-        .then(response => response.json())
-        .then(data => {
-            allData = data;
-            // Máº·c Ä‘á»‹nh hiá»ƒn thá»‹ Tab Open (status = 1)
-            const activeBtn = document.querySelector('.tab-btn.active');
-            filterTab(1, activeBtn);
-        })
-        .catch(err => console.error('Lá»—i táº£i dá»¯ liá»‡u:', err));
+        .then(res => res.json())
+        .then(data => { allData = Array.isArray(data) ? data : []; filterTab(1, document.querySelector('.tab-btn.active')); })
+        .catch(err => console.error('Lỗi tải dữ liệu DSO:', err));
 
-    // --- HÃ€M Xá»¬ LÃ IMPORT EXCEL ---
     function importExcel() {
         const fileInput = document.getElementById('excelFile');
         const file = fileInput.files[0];
-
-        if (!file) { alert('Vui lÃ²ng chá»n file Excel!'); return; }
-
+        if (!file) { alert('Vui lòng chọn file Excel!'); return; }
         const reader = new FileReader();
         reader.onload = function(e) {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
-
-            if (jsonData.length === 0) { alert('File Excel khÃ´ng cÃ³ dá»¯ liá»‡u!'); return; }
-
-            console.log('Dá»¯ liá»‡u thÃ´:', jsonData);
-
-            // Map dá»¯ liá»‡u theo yÃªu cáº§u: release_key, status, huser_defined_02
+            if (jsonData.length === 0) { alert('File Excel không có dữ liệu!'); return; }
             const standardizedData = jsonData.map(row => ({
                 release_key: row['release_key'],
                 status: parseInt(row['status']) || 1,
-                huser_defined_02: row['huser_defined_02'] // DÃ¹ng Ä‘á»ƒ insert vÃ o child_po
+                huser_defined_02: row['huser_defined_02']
             }));
-
             uploadData(standardizedData);
         };
         reader.readAsArrayBuffer(file);
     }
 
-    // --- UPLOAD Vá»šI PROGRESS BAR ---
     async function uploadData(data) {
-        if (!confirm(`Báº¡n cÃ³ cháº¯c muá»‘n import ${data.length} dÃ²ng dá»¯ liá»‡u DSO?`)) return;
-
-        const modal = document.getElementById('progressModal');
-        const pBar = document.getElementById('progressBar');
-        const pText = document.getElementById('progressText');
-        const resultBox = document.getElementById('resultBox');
-        
-        modal.style.display = 'flex';
-        resultBox.style.display = 'none';
-        pBar.style.width = '0%';
-        pText.innerText = 'Äang chuáº©n bá»‹...';
-
+        if (!confirm(`Bạn có chắc muốn import ${data.length} dòng dữ liệu DSO?`)) return;
         const BATCH_SIZE = 50;
-        let total = data.length;
-        let processed = 0;
-        let stats = { inserted: 0, updated: 0, errors: 0 };
-
         try {
-            for (let i = 0; i < total; i += BATCH_SIZE) {
+            for (let i = 0; i < data.length; i += BATCH_SIZE) {
                 const batch = data.slice(i, i + BATCH_SIZE);
-                
-                const response = await fetch('/api/dso/import', {
+                await fetch('/api/dso/import', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(batch)
                 });
-
-                const result = await response.json();
-
-                if (result.stats) {
-                    stats.inserted += result.stats.inserted;
-                    stats.updated += result.stats.updated;
-                    stats.errors += result.stats.errors;
-                }
-
-                processed += batch.length;
-                const percent = Math.min(100, Math.round((processed / total) * 100));
-                pBar.style.width = percent + '%';
-                pText.innerText = `Äang xá»­ lÃ½: ${percent}% (${processed}/${total})`;
             }
-
-            pText.innerText = 'âœ… Xá»­ lÃ½ hoÃ n táº¥t!';
-            pBar.style.backgroundColor = '#28a745';
-            
-            document.getElementById('countNew').innerText = stats.inserted;
-            document.getElementById('countUpdate').innerText = stats.updated;
-            document.getElementById('countError').innerText = stats.errors;
-            resultBox.style.display = 'block';
-
-        } catch (error) {
-            console.error('Lá»—i import:', error);
-            pText.innerText = 'âŒ CÃ³ lá»—i xáº£y ra!';
-            pBar.style.backgroundColor = '#dc3545';
+            alert('Import thành công. Tải lại trang để xem dữ liệu.');
+        } catch (e) {
+            console.error('Lỗi import:', e);
+            alert('Import thất bại, xem console để biết chi tiết');
         }
     }
-    function currentFiltered() {
-        const term = document.getElementById(\"searchBox\").value.trim().toLowerCase();
-        const filtered = allData.filter(item => item.status_dso == currentStatus);
-        if (!term) return filtered;
-        return filtered.filter(item => {
-            return (item.release_key || "").toLowerCase().includes(term)
-                || (item.child_po || "").toLowerCase().includes(term)
-                || (item.sku || "").toLowerCase().includes(term);
-        });
-    }
 </script>
-
-<!-- Modal Progress Bar -->
-<div id="progressModal" class="modal-overlay">
-    <div class="modal-content">
-        <h3>Äang xá»­ lÃ½ dá»¯ liá»‡u DSO</h3>
-        <div class="progress-wrapper">
-            <div id="progressBar" class="progress-bar"></div>
-        </div>
-        <span id="progressText">0%</span>
-        <div id="resultBox" class="result-box">
-            <h4>Káº¿t quáº£:</h4>
-            <div class="result-item">âž• ThÃªm má»›i: <span id="countNew" class="res-new">0</span></div>
-            <div class="result-item">âœï¸ Cáº­p nháº­t: <span id="countUpdate" class="res-update">0</span></div>
-            <div class="result-item">âš ï¸ Lá»—i: <span id="countError" class="res-error">0</span></div>
-            <div style="text-align: center;"><button class="btn-close" onclick="location.reload()">ÄÃ³ng & Táº£i láº¡i</button></div>
-        </div>
-    </div>
-</div>
-
 </body>
 </html>
-
-

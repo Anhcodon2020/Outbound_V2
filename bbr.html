@@ -58,6 +58,11 @@
         <input type="file" id="excelFile" accept=".xlsx, .xls" />
         <button class="btn-import" onclick="importExcel()">📤 Tải lên & Xử lý</button>
     </div>
+
+    <div class="import-area" style="margin-top:-10px; justify-content: space-between; gap: 8px;">
+        <label style="margin:0; font-weight:bold;">Tìm Child PO:</label>
+        <input type="text" id="childSearch" placeholder="Nhập Child PO..." oninput="applyFilters()" style="flex:1; padding:8px; border:1px solid #ddd; border-radius:4px;">
+    </div>
     
     <table id="bbrTable">
         <thead>
@@ -77,38 +82,52 @@
 </div>
 
 <script>
+    let bbrData = [];
+
     fetch('/api/bbr')
         .then(response => response.json())
         .then(data => {
-            const tableBody = document.querySelector('#bbrTable tbody');
-            if (!data || data.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Chưa có dữ liệu</td></tr>';
-                return;
-            }
-            data.forEach(item => {
-                const row = document.createElement('tr');
-                
-                // Kiểm tra nếu Qty BBR là 0 hoặc không có dữ liệu (null) thì thêm class cảnh báo
-                const displayQty = item.qty_bbr || 0;
-                if (displayQty === 0) {
-                    row.classList.add('warning-row');
-                }
-
-                row.innerHTML = `
-                    <td>${item.id}</td>
-                    <td>${item.child_po || ''}</td>
-                    <td>${item.parent_po || ''}</td>
-                    <td>${item.sku || ''}</td>
-                    <td>${displayQty}</td>
-                    <td>${item.remark || ''}</td>
-                `;
-                tableBody.appendChild(row);
-            });
+            bbrData = Array.isArray(data) ? data : [];
+            applyFilters();
         })
         .catch(err => {
             console.error('Lỗi tải dữ liệu BBR:', err);
             alert('Không thể tải dữ liệu BBR từ server.');
         });
+
+    function applyFilters() {
+        const keyword = (document.getElementById('childSearch').value || '').toLowerCase().trim();
+        const filtered = bbrData.filter(item => (item.child_po || '').toString().toLowerCase().includes(keyword));
+        renderTable(filtered);
+    }
+
+    function renderTable(data) {
+        const tableBody = document.querySelector('#bbrTable tbody');
+        if (!data || data.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Chưa có dữ liệu</td></tr>';
+            return;
+        }
+        tableBody.innerHTML = '';
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            
+            // Kiểm tra nếu Qty BBR là 0 hoặc không có dữ liệu (null) thì thêm class cảnh báo
+            const displayQty = item.qty_bbr || 0;
+            if (displayQty === 0) {
+                row.classList.add('warning-row');
+            }
+
+            row.innerHTML = `
+                <td>${item.id}</td>
+                <td>${item.child_po || ''}</td>
+                <td>${item.parent_po || ''}</td>
+                <td>${item.sku || ''}</td>
+                <td>${displayQty}</td>
+                <td>${item.remark || ''}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
 
     // --- HÀM XỬ LÝ IMPORT EXCEL ---
     function importExcel() {

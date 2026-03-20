@@ -417,7 +417,7 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/allocate' && req.method === 'GET') {
         const sql = `
             SELECT 
-                r.release_key, r.release_date, r.sku, r.release_qty,
+                r.release_key, r.release_date, r.sku, r.release_qty, r.status AS release_status,
                 d.child_po,
                 b.parent_po,
                 i.qty_invetory, i.date_rcv
