@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
@@ -30,6 +30,7 @@
         <a href="/masterdata.html">🗂️ Master Data</a>
         <a href="/check.html">✅ Check Data</a>
         <a href="/allowcate.html">📋 Allocate</a>
+        <a href="/check_clp.html">🧾 Check CLP</a>
     </div>
 
     <div class="filter-row">
@@ -38,6 +39,10 @@
             <option value="">Tất cả Hub</option>
         </select>
         <button id="exportBtn" onclick="exportExcel()" style="padding:6px 10px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer;">⬇️ Export Excel</button>
+        <button id="pickingBtn" onclick="exportPicking()" style="padding:6px 10px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer;">⬇️ Export Picking</button>
+        <button id="packingBtn" onclick="exportPackingListStrict()" style="padding:6px 10px; background:#9c27b0; color:#fff; border:none; border-radius:4px; cursor:pointer;">⬇️ Export Packing List</button>
+        <button id="autoSelBtn" onclick="autoSelectAvailable()" style="padding:6px 10px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer;">⚡ Auto Select</button>
+        <button id="deselectBtn" onclick="deselectAll()" style="padding:6px 10px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer;">❌ Bỏ chọn</button>
         <span id="statusText" style="color:#666;"></span>
     </div>
 
@@ -48,6 +53,7 @@
                 <th>Hub DC</th>
                 <th>Tổng Carton</th>
                 <th>Tổng CBM</th>
+                <th>Container (40')</th>
             </tr>
         </thead>
         <tbody>
@@ -64,19 +70,21 @@
                 <th>Ngày Release</th>
                 <th>SKU</th>
                 <th>CBM (đã nhân SL)</th>
+                <th>Container (40')</th>
                 <th>SL Cần Xuất</th>
+                <th>Còn lại</th>
                 <th>Child PO (DSO)</th>
                 <th>Parent PO (BBR)</th>
                 <th>FDC </th>
                 <th>Hub DC</th>
                 <th>Tồn kho (Carton)</th>
-                <th>Còn lại</th>
+                <th>Tổng Tồn SKU</th>
                 <th>Ngày Nhập (Date Rcv)</th>
                 <th>Chọn</th>
             </tr>
         </thead>
         <tbody>
-            <tr><td colspan="13" style="text-align:center">Đang tải...</td></tr>
+            <tr><td colspan="14" style="text-align:center">Đang tải...</td></tr>
         </tbody>
     </table>
 </div>
@@ -91,7 +99,7 @@
 </div>
 
 <script>
-    const state = { allocate: [], dc: [], master: [], bbr: [], releasing: [], currentAllocView: [], selectedKeys: new Set() };
+    const state = { allocate: [], dc: [], master: [], bbr: [], releasing: [], inventory: [], currentAllocView: [], selectedKeys: new Set() };
 
     function formatDate(dateString) {
         if (!dateString) return '';
@@ -103,12 +111,13 @@
         const status = document.getElementById('statusText');
         status.textContent = 'Đang tải dữ liệu...';
         try {
-            const [allocRes, dcRes, masterRes, bbrRes, releasingRes] = await Promise.all([
+            const [allocRes, dcRes, masterRes, bbrRes, releasingRes, invRes] = await Promise.all([
                 fetch('/api/allocate'),
                 fetch('/api/dc'),
                 fetch('/api/masterdata'),
                 fetch('/api/bbr'),
-                fetch('/api/releasing')
+                fetch('/api/releasing'),
+                fetch('/api/inventory')
             ]);
 
             state.allocate = await allocRes.json();
@@ -116,9 +125,11 @@
             state.master = await masterRes.json();
             state.bbr = await bbrRes.json();
             state.releasing = await releasingRes.json();
+            state.inventory = await invRes.json();
             if (!Array.isArray(state.master)) state.master = [];
             if (!Array.isArray(state.bbr)) state.bbr = [];
             if (!Array.isArray(state.releasing)) state.releasing = [];
+            if (!Array.isArray(state.inventory)) state.inventory = [];
 
             buildHubOptions();
             renderAll();
@@ -183,7 +194,6 @@
                 item.child_po ? (item.child_po.toString().substring(0,3)) : '',
                 hubName,
                 Number(item.qty_invetory) || 0,
-                '', // remaining tính theo lựa chọn, bỏ trống
                 item.date_rcv ? formatDate(item.date_rcv) : ''
             ];
         });
@@ -200,6 +210,157 @@
         URL.revokeObjectURL(url);
     }
 
+    async function exportPicking() {
+        const selected = state.currentAllocView.filter(item => state.selectedKeys.has(buildRowKey(item)));
+        if (selected.length === 0) {
+            alert('Bạn chưa chọn dòng nào.');
+            return;
+        }
+        const cbmMap = new Map(
+            (Array.isArray(state.master) ? state.master : []).map(item => [item.sku, item])
+        );
+        const dcMap = new Map(
+            (Array.isArray(state.dc) ? state.dc : [])
+                .map(dc => {
+                    const keyNum = Number(dc.code_dc ?? dc.hub_dc);
+                    return Number.isNaN(keyNum) ? null : [keyNum, dc];
+                })
+                .filter(Boolean)
+        );
+
+        const payload = selected.map(item => {
+            const hubCodeNum = Number((item.child_po || '').toString().substring(0,3));
+            const dcInfo = dcMap.get(hubCodeNum) || {};
+            const master = cbmMap.get(item.sku) || {};
+            const cbmPerCarton = parseFloat(master.cbm) || 0;
+            return {
+                release_key: item.release_key,
+                sku: item.sku,
+                sku_name: master.description || null,
+                release_qty: item.release_qty,
+                qty_invetory: item.qty_invetory,
+                date_rcv: item.date_rcv,
+                parent_po: item.parent_po,
+                child_po: item.child_po,
+                hubdc: dcInfo.hub_dc || dcInfo.hub || '',
+                fdc: dcInfo.fdc || dcInfo.fdc_name || '',
+                cbm_per_carton: cbmPerCarton,
+                length_cm: master.length || null,
+                width_cm: master.width || null,
+                height_cm: master.height || null
+            };
+        });
+
+        try {
+            const resp = await fetch('/api/picking/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await resp.json();
+            if (!resp.ok) throw new Error(json.error || 'Export thất bại');
+            alert(`Đã export ${json.inserted} dòng vào detail_pickinglist (picking_no: ${json.picking_no})`);
+        } catch (err) {
+            console.error('Export picking lỗi:', err);
+            alert(err.message || 'Export picking lỗi, xem console.');
+        }
+    }
+
+    async function exportPackingListStrict() {
+        const selected = state.currentAllocView.filter(item => state.selectedKeys.has(buildRowKey(item)));
+        if (selected.length === 0) {
+            alert('Bạn chưa chọn dòng nào.');
+            return;
+        }
+
+        // Lọc những dòng có tồn kho đủ đáp ứng (Inventory >= Pick Qty) và Pick Qty > 0
+        const validItems = selected.filter(item => {
+            const req = Number(item.calc_pick) || 0; // Sử dụng số lượng đã tính toán FIFO
+            const inv = Number(item.qty_invetory) || 0;
+            return inv >= req && req > 0;
+        });
+
+        const skippedCount = selected.length - validItems.length;
+
+        if (validItems.length === 0) {
+            alert(`Không có dòng nào đủ tồn kho để đáp ứng!\n(Đã chọn: ${selected.length}, Không đủ tồn: ${skippedCount})`);
+            return;
+        }
+
+        if (skippedCount > 0) {
+            if (!confirm(`Có ${skippedCount} dòng KHÔNG ĐỦ tồn kho và sẽ bị bỏ qua.\nChỉ xuất ${validItems.length} dòng hợp lệ.\nBạn có muốn tiếp tục?`)) return;
+        }
+
+        // Chuẩn bị dữ liệu gửi đi (tương tự exportPicking nhưng dùng danh sách đã lọc)
+        const cbmMap = new Map((Array.isArray(state.master) ? state.master : []).map(item => [item.sku, item]));
+        const dcMap = new Map((Array.isArray(state.dc) ? state.dc : []).map(dc => {
+            const keyNum = Number(dc.code_dc ?? dc.hub_dc);
+            return Number.isNaN(keyNum) ? null : [keyNum, dc];
+        }).filter(Boolean));
+
+        const payload = validItems.map(item => {
+            const hubCodeNum = Number((item.child_po || '').toString().substring(0,3));
+            const dcInfo = dcMap.get(hubCodeNum) || {};
+            const master = cbmMap.get(item.sku) || {};
+            const cbmPerCarton = parseFloat(master.cbm) || 0;
+            return {
+                release_key: item.release_key,
+                sku: item.sku,
+                sku_name: master.description || null,
+                release_qty: item.calc_pick, // Xuất số lượng phân bổ thực tế
+                qty_invetory: item.qty_invetory,
+                date_rcv: item.date_rcv,
+                parent_po: item.parent_po,
+                child_po: item.child_po,
+                hubdc: dcInfo.hub_dc || dcInfo.hub || '',
+                fdc: dcInfo.fdc || dcInfo.fdc_name || '',
+                cbm_per_carton: cbmPerCarton,
+                length_cm: master.length || null,
+                width_cm: master.width || null,
+                height_cm: master.height || null
+            };
+        });
+
+        try {
+            const resp = await fetch('/api/picking/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await resp.json();
+            if (!resp.ok) throw new Error(json.error || 'Export thất bại');
+            alert(`✅ Đã xuất thành công ${json.inserted} dòng vào Packing List.\nPicking No: ${json.picking_no}`);
+        } catch (err) {
+            console.error('Export Packing List lỗi:', err);
+            alert(err.message || 'Lỗi khi xuất Packing List.');
+        }
+    }
+
+    function autoSelectAvailable() {
+        let count = 0;
+        // Duyệt qua danh sách đang hiển thị
+        state.currentAllocView.forEach(item => {
+            const req = Number(item.calc_pick) || 0; // Sử dụng số lượng phân bổ
+            const inv = Number(item.qty_invetory) || 0;
+            // Chỉ chọn nếu tồn kho >= yêu cầu và chưa được chọn
+            if (inv >= req && req > 0) {
+                const key = buildRowKey(item);
+                if (!state.selectedKeys.has(key)) {
+                    state.selectedKeys.add(key);
+                    count++;
+                }
+            }
+        });
+        renderDetailTable(); // Vẽ lại bảng để cập nhật checkbox
+        alert(count > 0 ? `Đã tự động chọn thêm ${count} dòng đủ tồn kho.` : 'Không có dòng nào mới đủ điều kiện để chọn.');
+    }
+
+    function deselectAll() {
+        if (state.selectedKeys.size === 0) return;
+        state.selectedKeys.clear();
+        renderDetailTable();
+    }
+
     function renderDetailTable() {
         const tbody = document.querySelector('#allocTable tbody');
         const selectedHub = document.getElementById('hubFilter').value;
@@ -207,7 +368,7 @@
             (Array.isArray(state.master) ? state.master : []).map(item => [item.sku, parseFloat(item.cbm) || 0])
         );
         if (!state.allocate || state.allocate.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center">Không có dữ liệu Allocate</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="14" style="text-align:center">Không có dữ liệu Allocate</td></tr>';
             return;
         }
 
@@ -221,27 +382,83 @@
                 .filter(Boolean)
         );
 
-        const data = state.allocate
-            .slice()
-            // Sắp xếp theo tồn kho (carton) giảm dần, rồi đến ngày nhận tăng dần
-            .sort((a, b) => {
-                const invA = Number(a.qty_invetory) || 0;
-                const invB = Number(b.qty_invetory) || 0;
-                if (invA !== invB) return invB - invA;
-                return (a.date_rcv || '').localeCompare(b.date_rcv || '');
-            })
+        // Pre-calc Inventory & Selection for warnings
+        const invMap = new Map();
+        state.inventory.forEach(i => {
+            const key = `${i.parent_po_invent}__${i.sku_inventory}`;
+            invMap.set(key, (invMap.get(key)||0) + (Number(i.qty_invetory)||0));
+        });
+
+        // Pre-calc Total Inventory per SKU
+        const totalInvMap = new Map();
+        state.inventory.forEach(i => {
+            totalInvMap.set(i.sku_inventory, (totalInvMap.get(i.sku_inventory)||0) + (Number(i.qty_invetory)||0));
+        });
+
+        const selMap = new Map();
+        state.allocate.forEach(item => {
+            if (state.selectedKeys.has(buildRowKey(item))) {
+                const key = `${item.parent_po}__${item.sku}`;
+                selMap.set(key, (selMap.get(key)||0) + (Number(item.release_qty)||0));
+            }
+        });
+
+        // --- LOGIC MỚI: TÍNH TOÁN FIFO ---
+        // 1. Sắp xếp toàn bộ dữ liệu: Nhóm theo ReleaseKey+SKU, sau đó Sort theo Ngày nhập (FIFO)
+        const sortedGlobal = state.allocate.slice().sort((a, b) => {
+            const keyA = `${a.release_key}|${a.sku}`;
+            const keyB = `${b.release_key}|${b.sku}`;
+            if (keyA !== keyB) return keyA.localeCompare(keyB);
+            
+            // Nếu cùng Key, ưu tiên Ngày cũ trước (Date Rcv ASC)
+            const dateA = a.date_rcv || '9999-12-31';
+            const dateB = b.date_rcv || '9999-12-31';
+            return dateA.localeCompare(dateB);
+        });
+
+        // 2. Tính toán phân bổ số lượng (Pick Qty)
+        const filledMap = new Map(); // Theo dõi số lượng đã lấy cho mỗi Key
+        const invUsedMap = new Map(); // Theo dõi tồn kho đã dùng cho mỗi ParentPO|SKU
+
+        sortedGlobal.forEach(item => {
+            const key = `${item.release_key}|${item.sku}`;
+            const invKey = `${item.parent_po}|${item.sku}`;
+            const totalReq = Number(item.release_qty) || 0;
+            const invQty = Number(item.qty_invetory) || 0;
+            
+            const pickedSoFar = filledMap.get(key) || 0;
+            const usedInvSoFar = invUsedMap.get(invKey) || 0;
+
+            const remainingNeed = Math.max(0, totalReq - pickedSoFar);
+            const remainingInv = Math.max(0, invQty - usedInvSoFar);
+            
+            // Lấy tối đa có thể (min giữa "cần còn lại" và "tồn kho dòng này")
+            const take = Math.min(remainingNeed, remainingInv);
+            
+            item.calc_pick = take; // Lưu số lượng cần lấy ở dòng này
+            item.calc_remaining = remainingInv; // Lưu số lượng tồn kho còn lại tại thời điểm này
+
+            filledMap.set(key, pickedSoFar + take);
+            invUsedMap.set(invKey, usedInvSoFar + take);
+        });
+
+        // 3. Lọc hiển thị theo Hub
+        const data = sortedGlobal
             .filter(item => {
                 if (!selectedHub) return true;
                 const hubCodeNum = Number((item.child_po || '').toString().substring(0,3));
                 const dcInfo = dcMap.get(hubCodeNum);
-                return dcInfo && (dcInfo.hub_dc || dcInfo.hub) === selectedHub;
+                const isHubMatch = dcInfo && (dcInfo.hub_dc || dcInfo.hub) === selectedHub;
+                // Chỉ hiện inventory > 0
+                const hasStock = (Number(item.qty_invetory) || 0) > 0;
+                return isHubMatch && hasStock;
             });
 
         // lưu lại dataset sau khi lọc để dùng cho nút chọn
         state.currentAllocView = data;
 
         if (data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center">Không có dòng nào phù hợp bộ lọc</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="14" style="text-align:center">Không có dòng nào phù hợp bộ lọc</td></tr>';
             return;
         }
 
@@ -258,25 +475,48 @@
             const parentPo = item.parent_po || '<span class="missing-data">Thiếu BBR</span>';
             const releaseQtyNum = Number(item.release_qty) || 0;
             const invQtyNum = Number(item.qty_invetory) || 0;
+            const totalSkuInv = totalInvMap.get(item.sku) || 0;
             const invQty = item.qty_invetory != null ? `<span class="has-stock">${invQtyNum}</span>` : '<span class="missing-data">0</span>';
             const dateRcv = item.date_rcv ? formatDate(item.date_rcv) : '';
             const releaseDate = item.release_date ? formatDate(item.release_date) : '';
             const cbmPerCarton = cbmMap.get(item.sku) || 0;
-            const totalCbm = (cbmPerCarton * releaseQtyNum).toFixed(3);
+            const pickQty = Number(item.calc_pick) || 0;
+            const totalCbm = (cbmPerCarton * pickQty).toFixed(3);
+            const contEst = (Number(totalCbm) / 65).toFixed(2); // Dự kiến 65 CBM / container 40HC
+
+            // Hiển thị số lượng phân bổ
+            // Nếu pick < release tổng -> Có thể dòng này chỉ lấy 1 phần, hoặc đã hết hàng
+            let pickDisplay = `<span style="font-weight:bold; color:#0d6efd;">${item.calc_pick}</span>`;
+            if (item.calc_pick < releaseQtyNum && item.calc_pick > 0) {
+                pickDisplay += ` <span style="color:#888; font-size:0.9em;">/ ${releaseQtyNum}</span>`;
+            } else if (item.calc_pick === 0) {
+                 pickDisplay = `<span style="color:#dc3545;">0</span> <span style="color:#888; font-size:0.9em;">/ ${releaseQtyNum}</span>`;
+            }
 
             const rowKey = buildRowKey(item);
+            
+            // Check warning: Inventory Còn lại bị âm
+            const k = `${item.parent_po}__${item.sku}`;
+            const rem = (invMap.get(k)||0) - (selMap.get(k)||0);
+            if (rem < 0) {
+                row.style.backgroundColor = '#fff3cd'; // vàng nhạt (cảnh báo)
+                row.title = `Cảnh báo: Đã chọn quá tồn kho! (Thiếu ${Math.abs(rem)})`;
+            }
+
             row.innerHTML = `
                 <td>${item.release_key ?? ''}</td>
                 <td>${releaseDate}</td>
                 <td>${item.sku ?? ''}</td>
                 <td>${totalCbm}</td>
-                <td>${releaseQtyNum}</td>
+                <td>${contEst}</td>
+                <td>${pickDisplay}</td>
+                <td>${item.calc_remaining}</td>
                 <td>${childPo}</td>
                 <td>${parentPo}</td>
                 <td>${fdcName || fdcCode}</td>
                 <td>${hubName}</td>
                 <td>${invQty}</td>
-                <td><span id="remain-${idx}">-</span></td>
+                <td style="color:#198754; font-weight:bold;">${totalSkuInv}</td>
                 <td>${dateRcv}</td>
                 <td style="text-align:center;">
                     <input type="checkbox" data-idx="${idx}" data-rowkey="${rowKey}" onclick="selectRow(event, ${idx})" ${state.selectedKeys.has(rowKey) ? 'checked' : ''}>
@@ -295,9 +535,6 @@
                 release_status: item.release_status
             }));
         });
-
-        // cập nhật giá trị còn lại sau khi render
-        recomputeRemaining();
     }
 
     function buildRowKey(item) {
@@ -318,44 +555,8 @@
         const rowKey = buildRowKey(item);
         if (checkbox.checked) state.selectedKeys.add(rowKey);
         else state.selectedKeys.delete(rowKey);
-        recomputeRemaining();
 
-        openDetailModal({
-            release_key: item.release_key,
-            parent_po: item.parent_po,
-            child_po: item.child_po,
-            sku: item.sku,
-            release_qty: item.release_qty,
-            release_status: item.release_status
-        });
-    }
-
-    // Tính lũy kế theo parent_po + sku cho các dòng được chọn
-    function recomputeRemaining() {
-        const sumByParentSku = {};
-
-        state.currentAllocView.forEach((item, idx) => {
-            const rowKey = buildRowKey(item);
-            if (!state.selectedKeys.has(rowKey)) return;
-            const parentSkuKey = `${item.parent_po ?? ''}__${item.sku ?? ''}`;
-            const qty = Number(item.release_qty) || 0;
-            sumByParentSku[parentSkuKey] = (sumByParentSku[parentSkuKey] || 0) + qty;
-        });
-
-        state.currentAllocView.forEach((item, idx) => {
-            const cell = document.getElementById(`remain-${idx}`);
-            if (!cell) return;
-            const rowKey = buildRowKey(item);
-            if (!state.selectedKeys.has(rowKey)) {
-                cell.textContent = '-';
-                return;
-            }
-            const parentSkuKey = `${item.parent_po ?? ''}__${item.sku ?? ''}`;
-            const invQtyNum = Number(item.qty_invetory) || 0;
-            const used = sumByParentSku[parentSkuKey] || 0;
-            const remainingVal = used > invQtyNum ? invQtyNum : invQtyNum - used;
-            cell.textContent = remainingVal;
-        });
+        renderDetailTable(); // Re-render để cập nhật màu cảnh báo
     }
 
     function renderHubSummary() {
@@ -386,10 +587,9 @@
             if (!hub) return;
             if (selectedHub && hub !== selectedHub) return;
 
-            const releaseQty = Number(item.release_qty) || 0;
-            const inventoryQty = Number(item.qty_invetory) || 0;
-            // Nếu cần xuất lớn hơn tồn kho, chỉ tính theo lượng tồn kho đang có
-            const usedQty = Math.min(releaseQty, inventoryQty);
+            // Sử dụng số lượng đã phân bổ FIFO (calc_pick) để tính tổng chính xác
+            // Nếu chưa chạy qua renderDetailTable thì calc_pick có thể chưa có, fallback về 0
+            const usedQty = Number(item.calc_pick) || 0;
             if (usedQty <= 0) return;
 
             const cbmPerCarton = cbmMap.get(item.sku) || 0;
@@ -407,10 +607,12 @@
         tbody.innerHTML = '';
         keys.forEach(hub => {
             const row = document.createElement('tr');
+            const conts = (summary[hub].cbm / 65).toFixed(2); // Dự kiến 65 CBM / container 40HC
             row.innerHTML = `
                 <td><strong>${hub}</strong></td>
                 <td>${summary[hub].cartons}</td>
                 <td>${summary[hub].cbm.toFixed(4)}</td>
+                <td>${conts}</td>
             `;
             tbody.appendChild(row);
         });
@@ -442,6 +644,25 @@
         const releaseQtyDb = releaseMatch ? (releaseMatch.release_qty ?? '') : '';
         const releaseStatusDb = releaseMatch ? formatReleaseStatus(releaseMatch.status) : '';
 
+        // Tính tổng tồn kho cho ParentPO + SKU
+        const totalInv = state.inventory
+            .filter(i => (i.parent_po_invent == detail.parent_po) && (i.sku_inventory == detail.sku))
+            .reduce((sum, i) => sum + (Number(i.qty_invetory) || 0), 0);
+
+        // Tính tổng số lượng ĐÃ CHỌN (Selected) cho ParentPO + SKU này
+        // (Duyệt qua toàn bộ danh sách allocate để tính cả những dòng đang bị ẩn do filter nhưng đã tick trước đó)
+        const totalSelected = state.allocate
+            .filter(item => {
+                const key = buildRowKey(item);
+                const isSelected = state.selectedKeys.has(key);
+                const isMatch = (item.parent_po == detail.parent_po) && (item.sku == detail.sku);
+                return isSelected && isMatch;
+            })
+            .reduce((sum, item) => sum + (Number(item.release_qty) || 0), 0);
+
+        const remaining = totalInv - totalSelected;
+        const remainColor = remaining < 0 ? '#dc3545' : '#198754'; // Đỏ nếu âm, Xanh nếu dương
+
         modalBody.innerHTML = `
             <div><strong>Release Key</strong></div><div>${detail.release_key ?? ''}</div>
             <div><strong>Parent PO</strong></div><div>${detail.parent_po ?? ''}</div>
@@ -452,6 +673,8 @@
             <div><strong>Releasing Qty (DB)</strong></div><div>${releaseQtyDb}</div>
             <div><strong>Releasing Status (DB)</strong></div><div>${releaseStatusDb}</div>
             <div><strong>BBR Qty</strong></div><div>${bbrQtyDisplay}</div>
+            <div><strong>Inventory (Tổng)</strong></div><div style="color:#0d6efd; font-weight:bold;">${totalInv}</div>
+            <div><strong>Inventory Còn lại</strong></div><div style="color:${remainColor}; font-weight:bold;">${remaining} (đã trừ selected)</div>
         `;
         modal.style.display = 'flex';
     }

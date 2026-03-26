@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Demo xếp thùng lên pallet (3D)</title>
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; }
+    .layout { display:flex; height:100vh; }
+    .panel { width:320px; padding:16px 18px; background:#111827; box-shadow:inset -1px 0 0 #1f2937; overflow:auto; }
+    label { display:block; margin-top:10px; font-size:13px; color:#cbd5e1; }
+    input, select { width:100%; padding:6px 8px; margin-top:4px; border:1px solid #334155; border-radius:6px; background:#0b1222; color:#e2e8f0; }
+    button { margin-top:14px; width:100%; padding:10px; background:#10b981; color:#0b1222; border:none; border-radius:8px; font-weight:bold; cursor:pointer; }
+    button:hover { background:#34d399; }
+    .stat { margin-top:12px; font-size:13px; line-height:1.4; }
+    #canvasWrap { flex:1; position:relative; }
+    #threeCanvas { width:100%; height:100%; display:block; }
+    .chip { display:inline-block; padding:3px 6px; border-radius:6px; background:#1f2937; margin-right:6px; font-size:12px; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <div class="panel">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+      <button onclick="history.back()" style="width:auto; padding:8px 10px; background:#e5e7eb; color:#0b1222; border:none; border-radius:8px; cursor:pointer;">← Quay về</button>
+      <h3 style="margin:0;">Mô phỏng pallet</h3>
+    </div>
+
+    <label>Loại pallet nhanh</label>
+    <select id="preset">
+      <option value="custom">Tự nhập</option>
+      <option value="1.2">Pallet 1.2 (120 x 100 x 250 cm)</option>
+      <option value="1.9">Pallet 1.9 (190 x 100 x 250 cm)</option>
+    </select>
+
+    <label>Kích thước pallet (cm)</label>
+    <div style="display:flex; gap:6px;">
+      <input id="pL" type="number" placeholder="Dài" value="120">
+      <input id="pW" type="number" placeholder="Rộng" value="100">
+      <input id="pH" type="number" placeholder="Cao" value="250">
+    </div>
+
+    <label>Thêm kích thước thùng (L x W x H, cm) & số lượng</label>
+    <div style="display:flex; gap:6px;">
+      <input id="bL" type="number" placeholder="L" value="40">
+      <input id="bW" type="number" placeholder="W" value="30">
+      <input id="bH" type="number" placeholder="H" value="25">
+    </div>
+    <label>Đặt thùng</label>
+    <select id="orient">
+      <option value="LWH">Đứng: L x W x H</option>
+      <option value="LHW">Nằm (lật H xuống W): L x H x W</option>
+      <option value="WLH">Nằm (lật L xuống W): W x L x H</option>
+    </select>
+    <label>Số lượng thùng</label>
+    <input id="bQty" type="number" value="100">
+    <button id="btnAddBox">Thêm dòng</button>
+
+    <label style="margin-top:12px; display:flex; align-items:center; gap:6px;">
+      <input type="checkbox" id="chkTol" checked>
+      Cho phép dư 5% kích thước (tolerance)
+    </label>
+    <label style="margin-top:4px; display:flex; align-items:center; gap:6px;">
+      <input type="checkbox" id="chkOpt" checked>
+      Tự chọn hướng tối ưu (6 hướng)
+    </label>
+
+    <div class="stat" id="boxList"></div>
+
+    <button id="btnRebuild">Tính & Vẽ (xem theo dòng đầu tiên)</button>
+    <button id="btnOptimize" style="background:#3b82f6;">Tối ưu ghép chung (multi size)</button>
+
+    <div class="stat" id="stat"></div>
+    <div class="stat" id="optStat"></div>
+    <div id="optPallets" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px;"></div>
+  </div>
+
+  <div id="canvasWrap">
+    <canvas id="threeCanvas"></canvas>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+
+const canvas = document.getElementById('threeCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1222);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+camera.position.set(3, 2.2, 3);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0,0.6,0);
+controls.update();
+
+const light = new THREE.DirectionalLight(0xffffff, 1.0);
+light.position.set(3,4,2);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+const grid = new THREE.GridHelper(10, 20, 0x3b82f6, 0x1e293b);
+grid.position.y = 0;
+scene.add(grid);
+
+let palletMesh = null;
+let boxesGroup = new THREE.Group();
+scene.add(boxesGroup);
+let boxLines = [];
+let lastBins = [];
+
+function resizeRenderer() {
+  const { clientWidth, clientHeight } = canvas.parentElement;
+  renderer.setSize(clientWidth, clientHeight, false);
+  camera.aspect = clientWidth / clientHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resizeRenderer);
+resizeRenderer();
+
+function applyPreset() {
+  const val = document.getElementById('preset').value;
+  if (val === '1.2') { setPallet(120, 100, 250); }
+  else if (val === '1.9') { setPallet(190, 100, 250); }
+}
+function setPallet(L,W,H) {
+  document.getElementById('pL').value = L;
+  document.getElementById('pW').value = W;
+  document.getElementById('pH').value = H;
+}
+
+function orientDims(L,W,H, orient) {
+  if (orient === 'LHW') return [L,H,W];
+  if (orient === 'WLH') return [W,L,H];
+  if (orient === 'WHL') return [W,H,L];
+  if (orient === 'HLW') return [H,L,W];
+  if (orient === 'HWL') return [H,W,L];
+  return [L,W,H];
+}
+
+function bestOrientation(L,W,H,pL,pW,pH,useTol,optimize) {
+  const orientations = optimize ? ['LWH','LHW','WLH','WHL','HLW','HWL'] : [document.getElementById('orient').value];
+  const tol = useTol ? 1.05 : 1;
+  let best = {cap:-1, orient: orientations[0], dims:[L,W,H], nL:0, nW:0, nH:0};
+  orientations.forEach(o=>{
+    let [l,w,h] = orientDims(L,W,H,o);
+    l*=tol; w*=tol; h*=tol;
+    const nL = Math.floor(pL / l);
+    const nW = Math.floor(pW / w);
+    const nH = Math.floor(pH / h);
+    const cap = Math.max(0, nL*nW*nH);
+    if (cap > best.cap) best = {cap, orient:o, dims:[l,w,h], nL, nW, nH};
+  });
+  return best;
+}
+
+function rebuild() {
+  const pL = Number(document.getElementById('pL').value)||0;
+  const pW = Number(document.getElementById('pW').value)||0;
+  const pH = Number(document.getElementById('pH').value)||0;
+  let bL = Number(document.getElementById('bL').value)||0;
+  let bW = Number(document.getElementById('bW').value)||0;
+  let bH = Number(document.getElementById('bH').value)||0;
+  const useTol = document.getElementById('chkTol').checked;
+  const optimize = document.getElementById('chkOpt').checked;
+  const best = bestOrientation(bL,bW,bH,pL,pW,pH,useTol,optimize);
+  [bL,bW,bH] = best.dims;
+  const orient = best.orient;
+
+  if (pL<=0||pW<=0||pH<=0||bL<=0||bW<=0||bH<=0) {
+    document.getElementById('stat').innerHTML = '⚠️ Nhập kích thước hợp lệ.';
+    return;
+  }
+
+  // capacity
+  const nL = best.nL;
+  const nW = best.nW;
+  const nH = best.nH;
+  const total = Math.max(0, best.cap);
+
+  // draw pallet
+  if (palletMesh) scene.remove(palletMesh);
+  const palletGeom = new THREE.BoxGeometry(pL/100, 0.12, pW/100);
+  const palletMat = new THREE.MeshStandardMaterial({color:0xf59e0b, roughness:0.8});
+  palletMesh = new THREE.Mesh(palletGeom, palletMat);
+  palletMesh.position.set(0, 0.06, 0);
+  scene.add(palletMesh);
+
+  // draw sample boxes up to 150 boxes for performance
+  boxesGroup.clear();
+  const boxGeom = new THREE.BoxGeometry(bL/100, bH/100, bW/100);
+  const boxMat = new THREE.MeshStandardMaterial({color:0x38bdf8, opacity:0.85, transparent:true});
+  const maxDraw = Math.min(total, 150);
+  let drawn = 0;
+  for (let h=0; h<nH && drawn<maxDraw; h++) {
+    for (let w=0; w<nW && drawn<maxDraw; w++) {
+      for (let l=0; l<nL && drawn<maxDraw; l++) {
+        const m = new THREE.Mesh(boxGeom, boxMat);
+        const x = (-pL/2 + bL/2 + l*bL)/100;
+        const z = (-pW/2 + bW/2 + w*bW)/100;
+        const y = 0.06 + (bH/200) + h*(bH/100);
+        m.position.set(x, y, z);
+        boxesGroup.add(m);
+        drawn++;
+      }
+    }
+  }
+
+  document.getElementById('stat').innerHTML = `
+    <div class="chip">Pallet: ${pL} x ${pW} x ${pH} cm</div>
+    <div class="chip">Thùng (preview): ${bL.toFixed(1)} x ${bW.toFixed(1)} x ${bH.toFixed(1)} cm (${orient}${useTol?' +5% tol':''})</div>
+    <div class="chip">Số thùng tối đa: ${total}</div>
+    <div class="chip">LxW mỗi tầng: ${nL} x ${nW}</div>
+    <div class="chip">Tầng cao: ${nH}</div>
+  `;
+}
+
+function addBoxLine() {
+  const L = Number(document.getElementById('bL').value)||0;
+  const W = Number(document.getElementById('bW').value)||0;
+  const H = Number(document.getElementById('bH').value)||0;
+  const qty = Math.max(0, Number(document.getElementById('bQty').value)||0);
+  const orient = document.getElementById('orient').value;
+  if (L<=0||W<=0||H<=0||qty<=0) { alert('Nhập kích thước và số lượng hợp lệ'); return; }
+  boxLines.push({ L,W,H,qty,orient });
+  renderBoxList();
+}
+
+function renderBoxList() {
+  const wrap = document.getElementById('boxList');
+  if (!boxLines.length) { wrap.innerHTML = 'Chưa có dòng nào.'; return; }
+  wrap.innerHTML = boxLines.map((b,i)=>`
+    <div class="chip">#${i+1} - ${b.L}x${b.W}x${b.H} (${b.orient}) | Qty ${b.qty}
+      <button style="margin-left:6px; padding:2px 6px;" onclick="removeLine(${i})">x</button>
+    </div>
+  `).join('');
+}
+
+function removeLine(idx) {
+  boxLines.splice(idx,1);
+  renderBoxList();
+}
+
+function computeSummary() {
+  const pL = Number(document.getElementById('pL').value)||0;
+  const pW = Number(document.getElementById('pW').value)||0;
+  const pH = Number(document.getElementById('pH').value)||0;
+  const useTol = document.getElementById('chkTol').checked;
+  const optimize = document.getElementById('chkOpt').checked;
+  let html = '';
+  let totalPallets = 0;
+  boxLines.forEach((b, i) => {
+    const best = bestOrientation(b.L,b.W,b.H,pL,pW,pH,useTol,optimize ? true : false);
+    const cap = best.cap;
+    const pallets = cap>0 ? Math.ceil(b.qty / cap) : 'N/A';
+    if (Number.isFinite(pallets)) totalPallets += pallets;
+    html += `<div class="chip">#${i+1} (${best.orient}${useTol?'+5%':''}) cap/pallet: ${cap}, cần ${pallets} pallet cho ${b.qty} thùng</div>`;
+  });
+  if (boxLines.length) html += `<div class="chip">Tổng pallet (không gom chung kích thước): ${totalPallets}</div>`;
+  document.getElementById('stat').innerHTML = html || 'Chưa có dữ liệu.';
+}
+
+function optimizeMixed() {
+  const pL = Number(document.getElementById('pL').value)||0;
+  const pW = Number(document.getElementById('pW').value)||0;
+  const pH = Number(document.getElementById('pH').value)||0;
+  if (pL<=0||pW<=0||pH<=0) { document.getElementById('optStat').innerHTML = 'Nhập pallet hợp lệ'; return; }
+  const palletVol = pL*pW*pH;
+  const useTol = document.getElementById('chkTol').checked;
+  const optimize = document.getElementById('chkOpt').checked;
+  const items = [];
+  boxLines.forEach((b,idx)=>{
+    const best = bestOrientation(b.L,b.W,b.H,pL,pW,pH,useTol,optimize ? true : false);
+    if (best.cap<=0) return; // không fit
+    const vol = (best.dims[0]*best.dims[1]*best.dims[2]);
+    for (let i=0;i<b.qty;i++) {
+      items.push({idx, vol, dims: best.dims, orient: best.orient});
+    }
+  });
+  if (!items.length) { document.getElementById('optStat').innerHTML = 'Không có thùng nào fit pallet'; return; }
+  // sort volume desc
+  items.sort((a,b)=>b.vol - a.vol);
+  const bins = [];
+  items.forEach(it=>{
+    let placed = false;
+    for (const bin of bins) {
+      if (bin.remain >= it.vol) {
+        bin.remain -= it.vol;
+        bin.counts[it.idx] = (bin.counts[it.idx]||0)+1;
+        bin.items.push(it);
+        placed=true; break;
+      }
+    }
+    if (!placed) {
+      bins.push({remain: palletVol - it.vol, counts: {[it.idx]:1}, items:[it]});
+    }
+  });
+  lastBins = bins;
+  const fillPerc = bins.map(b=> ((palletVol - b.remain)/palletVol)*100 );
+  const avgFill = (fillPerc.reduce((a,b)=>a+b,0)/bins.length).toFixed(1);
+  let html = `<div class="chip">Pallet cần: ${bins.length}</div><div class="chip">Fill trung bình: ${avgFill}%</div>`;
+  bins.forEach((b,i)=>{
+    const parts = Object.entries(b.counts).map(([idx,c])=>`#${Number(idx)+1}: ${c}`).join(', ');
+    html += `<div class="chip">Pallet ${i+1}: ${parts}</div>`;
+  });
+  document.getElementById('optStat').innerHTML = html;
+
+  // render pallet cards with fill and CBM
+  const wrap = document.getElementById('optPallets');
+  wrap.innerHTML = '';
+  bins.forEach((b,i)=>{
+    const usedVol = palletVol - b.remain;
+    const cbm = (usedVol / 1_000_000).toFixed(3); // cm3 -> m3
+    const fill = Math.min(100, ((usedVol/palletVol)*100)).toFixed(1);
+    const bar = document.createElement('div');
+    bar.style.width = '150px';
+    bar.style.border = '1px solid #334155';
+    bar.style.borderRadius = '8px';
+    bar.style.background = '#0b1222';
+    bar.style.padding = '8px';
+    bar.innerHTML = `
+      <div style="font-weight:bold; margin-bottom:6px;">Pallet ${i+1}</div>
+      <div style="height:10px; background:#1f2937; border-radius:6px; overflow:hidden; margin-bottom:6px;">
+        <div style="width:${fill}%; height:100%; background:#10b981;"></div>
+      </div>
+      <div style="font-size:12px;">Fill: ${fill}%</div>
+      <div style="font-size:12px;">CBM: ${cbm}</div>
+      <div style="font-size:12px; color:#94a3b8;">${Object.entries(b.counts).map(([idx,c])=>`#${Number(idx)+1}:${c}`).join(', ')}</div>
+      <button style="margin-top:6px; width:100%; padding:6px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="showBin(${i})">Xem sắp xếp</button>
+    `;
+    wrap.appendChild(bar);
+  });
+}
+
+function showBin(idx) {
+  if (!lastBins[idx]) return;
+  const bin = lastBins[idx];
+  // simple shelf packing positions
+  const pL = Number(document.getElementById('pL').value)||0;
+  const pW = Number(document.getElementById('pW').value)||0;
+  const pH = Number(document.getElementById('pH').value)||0;
+  boxesGroup.clear();
+  let x=0, z=0, y=0, rowH=0;
+  for (const it of bin.items) {
+    const [l,w,h] = it.dims;
+    if (x + l > pL) { // new row
+      x = 0; z += rowH; rowH = 0;
+    }
+    if (z + w > pW) { // new layer
+      z = 0; x = 0; y += rowH;
+      rowH = 0;
+    }
+    if (y + h > pH) break; // out of height
+    rowH = Math.max(rowH, w);
+    const geom = new THREE.BoxGeometry(l/100, h/100, w/100);
+    const mat = new THREE.MeshStandardMaterial({color:0x38bdf8, opacity:0.9, transparent:true});
+    const mesh = new THREE.Mesh(geom, mat);
+    const posX = (-pL/2 + l/2 + x)/100;
+    const posZ = (-pW/2 + w/2 + z)/100;
+    const posY = 0.06 + (h/200) + y/100;
+    mesh.position.set(posX, posY, posZ);
+    boxesGroup.add(mesh);
+    x += l;
+  }
+  document.getElementById('stat').innerHTML = `<div class="chip">Đang xem pallet ${idx+1}</div>`;
+}
+
+rebuild();
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+
+// bind events
+document.getElementById('preset').addEventListener('change', () => { applyPreset(); rebuild(); });
+document.getElementById('btnRebuild').addEventListener('click', rebuild);
+document.getElementById('btnAddBox').addEventListener('click', () => { addBoxLine(); computeSummary(); });
+document.getElementById('btnOptimize').addEventListener('click', optimizeMixed);
+
+// expose for inline button
+window.showBin = showBin;
+</script>
+</body>
+</html>

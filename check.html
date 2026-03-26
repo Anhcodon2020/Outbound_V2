@@ -35,6 +35,8 @@
         <a href="/bbr.html">📈 BBR Report</a>
         <a href="/inventory.html">🏭 Inventory</a>
         <a href="/check.html">✅ Check Data</a>
+        <a href="/allowcate_1.html">📋 Allocate</a>
+        <a href="/create_picking_list.html">🧾 Tạo danh sách lấy hàng</a>
     </div>
 
     <h1>Bảng Đối Chiếu Dữ Liệu (Status = 3)</h1>
@@ -49,7 +51,6 @@
     <table id="checkTable">
         <thead>
             <tr>
-                <th>Release Key</th>
                 <th>SKU</th>
                 <th>Release Qty</th>
                 <th>Child PO (DSO)</th>
@@ -64,16 +65,34 @@
     </table>
 </div>
 
+<!-- Modal chi tiết -->
+<div id="detailModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:100;">
+    <div style="background:white; padding:20px; border-radius:8px; width:600px; max-width:90vw; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <h3 id="modalTitle" style="margin-top:0; border-bottom: 1px solid #eee; padding-bottom: 10px;">Chi tiết Release Keys</h3>
+        <div id="modalContent" style="max-height: 60vh; overflow-y: auto;"></div>
+        <div style="text-align: right; margin-top: 20px;">
+            <button onclick="closeModal()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Đóng</button>
+        </div>
+    </div>
+</div>
+
 <script>
     let allData = [];
+    let rawCheckData = []; // To store original data before grouping
 
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (isNaN(date)) return dateString; // Return original if invalid
+        return date.toLocaleDateString('vi-VN');
+    }
     // Hàm render bảng
     function renderTable(data) {
         const tableBody = document.querySelector('#checkTable tbody');
         tableBody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Không có dữ liệu phù hợp</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Không có dữ liệu phù hợp</td></tr>';
             return;
         }
 
@@ -90,7 +109,14 @@
                 statusText = '⚠️ Lệch';
             }
 
-            row.innerHTML = `<td>${item.release_key}</td><td>${item.sku}</td><td>${rQty}</td><td>${item.child_po || '<span style="color:red">N/A</span>'}</td><td>${item.parent_po || '<span style="color:red">N/A</span>'}</td><td>${bQty}</td><td>${statusText}</td>`;
+            const childPo = item.child_po || '';
+            const sku = item.sku || '';
+            // Make child_po clickable
+            const childPoHtml = childPo 
+                ? `<a href="#" onclick="showDetails('${childPo.replace(/'/g, "\\'")}', '${sku.replace(/'/g, "\\'")}'); return false;" style="text-decoration: underline; color: #007bff; font-weight: bold;">${childPo}</a>`
+                : '<span style="color:red">N/A</span>';
+
+            row.innerHTML = `<td>${sku}</td><td>${rQty}</td><td>${childPoHtml}</td><td>${item.parent_po || '<span style="color:red">N/A</span>'}</td><td>${bQty}</td><td>${statusText}</td>`;
             tableBody.appendChild(row);
         });
     }
@@ -126,7 +152,6 @@
             const rQty = item.release_qty || 0;
             const bQty = item.qty_bbr || 0;
             return {
-                'Release Key': item.release_key,
                 'SKU': item.sku,
                 'Release Qty': rQty,
                 'Child PO': item.child_po || '',
@@ -143,11 +168,51 @@
         XLSX.writeFile(wb, "Check_Data_Report.xlsx");
     }
 
+    // --- Modal Functions ---
+    function showDetails(childPo, sku) {
+        const modal = document.getElementById('detailModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalContent = document.getElementById('modalContent');
+
+        modalTitle.innerText = `Chi tiết cho Child PO: ${childPo} - SKU: ${sku}`;
+
+        // Filter rawCheckData to find all matching items
+        const details = rawCheckData.filter(item => item.child_po === childPo && item.sku === sku);
+
+        if (details.length === 0) {
+            modalContent.innerHTML = '<p>Không tìm thấy chi tiết.</p>';
+        } else {
+            let tableHtml = '<table style="width:100%"><thead><tr><th>Release Key</th><th>Ngày Release</th><th>Release Qty</th></tr></thead><tbody>';
+            details.forEach(d => {
+                tableHtml += `<tr><td>${d.release_key}</td><td>${formatDate(d.release_date)}</td><td>${d.release_qty}</td></tr>`;
+            });
+            tableHtml += '</tbody></table>';
+            modalContent.innerHTML = tableHtml;
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('detailModal').style.display = 'none';
+    }
+
     fetch('/api/check')
         .then(response => response.json())
         .then(data => {
-            allData = data;
-            renderTable(data);
+            rawCheckData = Array.isArray(data) ? data : []; // Store raw data
+            const grouped = {};
+            if (Array.isArray(data)) {
+                data.forEach(item => {
+                    const key = (item.sku || '') + '|' + (item.child_po || '');
+                    if (!grouped[key]) {
+                        grouped[key] = { ...item, release_qty: 0 };
+                    }
+                    grouped[key].release_qty += (Number(item.release_qty) || 0);
+                });
+            }
+            allData = Object.values(grouped);
+            renderTable(allData);
         })
         .catch(err => {
             console.error('Lỗi tải dữ liệu check:', err);

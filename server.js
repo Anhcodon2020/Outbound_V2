@@ -1,4 +1,4 @@
-﻿// Import cÃ¡c module cáº§n thiáº¿t
+﻿﻿﻿﻿﻿﻿// Import cÃ¡c module cáº§n thiáº¿t
 require('dotenv').config(); // Load biáº¿n mÃ´i trÆ°á»ng tá»« file .env
 const http = require('http');
 const fs = require('fs');
@@ -6,7 +6,7 @@ const path = require('path');
 const mysql = require('mysql2');
 
 // Äá»‹nh nghÄ©a cá»•ng mÃ  server sáº½ láº¯ng nghe
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Táº¡o káº¿t ná»‘i Database
 const dbUrl = new URL(process.env.DATABASE_URL);
@@ -30,6 +30,14 @@ const chunkArray = (arr, size = 1000) => {
     for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
     return chunks;
 };
+// Helper: xác định tên cột số lượng trong bảng inventory (qty_invetory hoặc qty_inventory)
+async function getInventoryQtyColumn(conn) {
+    const [c1] = await conn.query("SHOW COLUMNS FROM inventory LIKE 'qty_invetory'");
+    if (Array.isArray(c1) && c1.length) return 'qty_invetory';
+    const [c2] = await conn.query("SHOW COLUMNS FROM inventory LIKE 'qty_inventory'");
+    if (Array.isArray(c2) && c2.length) return 'qty_inventory';
+    return null;
+}
 
 // Kiá»ƒm tra káº¿t ná»‘i Pool (Optional)
 pool.getConnection((err, connection) => {
@@ -60,6 +68,95 @@ const server = http.createServer((req, res) => {
         return; // Káº¿t thÃºc xá»­ lÃ½
     }
 
+    // --- API: Update Releasing Status ---
+    if (pathname === '/api/releasing/update' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const { id, status } = JSON.parse(body);
+                if (!id || !status) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Thiếu id hoặc status' }));
+                }
+                const sql = 'UPDATE releasing SET status = ? WHERE id = ?';
+                pool.query(sql, [status, id], (err, result) => {
+                    if (err) {
+                        res.writeHead(500, {'Content-Type': 'application/json'});
+                        res.end(JSON.stringify({ error: err.message }));
+                    } else {
+                        res.writeHead(200, {'Content-Type': 'application/json'});
+                        res.end(JSON.stringify({ message: 'Updated', affected: result.affectedRows }));
+                    }
+                });
+            } catch (e) {
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+        });
+        return;
+    }
+
+    // --- API: Delete Releasing ---
+    if (pathname === '/api/releasing/delete' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const { id } = JSON.parse(body);
+                if (!id) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Thiếu id' }));
+                }
+                const sql = 'DELETE FROM releasing WHERE id = ?';
+                pool.query(sql, [id], (err, result) => {
+                    if (err) {
+                        res.writeHead(500, {'Content-Type': 'application/json'});
+                        res.end(JSON.stringify({ error: err.message }));
+                    } else {
+                        res.writeHead(200, {'Content-Type': 'application/json'});
+                        res.end(JSON.stringify({ message: 'Deleted', affected: result.affectedRows }));
+                    }
+                });
+            } catch (e) {
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+        });
+        return;
+    }
+
+    // --- API: Delete Unchecked Releasing ---
+    if (pathname === '/api/releasing/delete_unchecked' && req.method === 'POST') {
+        const sql = 'DELETE FROM releasing WHERE is_checked = 0';
+        pool.query(sql, (err, result) => {
+            if (err) {
+                console.error('Lỗi xóa mục chưa check (releasing):', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi server', details: err.message }));
+            } else {
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Deleted unchecked items', affected: result.affectedRows }));
+            }
+        });
+        return;
+    }
+
+    // --- API: Reset is_checked for all releasing ---
+    if (pathname === '/api/releasing/reset_check' && req.method === 'POST') {
+        const sql = 'UPDATE releasing SET is_checked = 0';
+        pool.query(sql, (err, result) => {
+            if (err) {
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: err.message }));
+            } else {
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Reset successful', affected: result.affectedRows }));
+            }
+        });
+        return;
+    }
+
     // --- API: Import Excel (Nháº­n dá»¯ liá»‡u JSON vÃ  xá»­ lÃ½ Insert/Update) ---
     if (pathname === '/api/releasing/import' && req.method === 'POST') {
         let body = '';
@@ -72,14 +169,25 @@ const server = http.createServer((req, res) => {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({ error: 'Không có dữ liệu import' }));
                 }
+                // deduplicate theo release_key + child_po/huser_defined_02
+                const seen = new Set();
+                const deduped = [];
+                for (const item of importData) {
+                    const child = item.huser_defined_02 ?? item.child_po ?? '';
+                    const key = `${item.release_key || ''}__${child}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    deduped.push(item);
+                }
 
                 const sql = `
-                    INSERT INTO releasing (release_key, release_date, sku, status, release_qty, change_reason)
+                    INSERT INTO releasing (release_key, release_date, sku, status, release_qty, change_reason, is_checked)
                     VALUES ?
                     ON DUPLICATE KEY UPDATE 
                         release_qty = VALUES(release_qty),
                         status = VALUES(status),
-                        change_reason = VALUES(change_reason)
+                        change_reason = VALUES(change_reason),
+                        is_checked = VALUES(is_checked)
                 `;
 
                 let inserted = 0, updated = 0;
@@ -90,7 +198,8 @@ const server = http.createServer((req, res) => {
                         item.sku,
                         item.status ?? 1,
                         item.release_qty ?? 0,
-                        'Import Excel'
+                        'Import Excel',
+                        1
                     ]);
 
                     const result = await new Promise((resolve, reject) => {
@@ -141,20 +250,38 @@ const server = http.createServer((req, res) => {
                     return res.end(JSON.stringify({ error: 'Không có dữ liệu import' }));
                 }
 
+                // chuẩn hóa + bỏ trùng theo release_key
+                const seen = new Set();
+                const deduped = [];
+                for (const item of importData) {
+                    const key = item.release_key;
+                    if (!key) continue; // bỏ dòng không có release_key vì không upsert được
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    deduped.push({
+                        release_key: key,
+                        status: item.status ?? item.status_dso ?? 1,
+                        child_po: item.huser_defined_02 ?? item.child_po ?? null
+                    });
+                }
+                if (deduped.length === 0) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ error: 'Không có release_key hợp lệ' }));
+                }
+
                 const sql = `
                     INSERT INTO dso (release_key, status_dso, child_po)
                     VALUES ?
                     ON DUPLICATE KEY UPDATE 
-                        status_dso = VALUES(status_dso),
-                        child_po = VALUES(child_po)
+                        status_dso = VALUES(status_dso)
                 `;
 
                 let inserted = 0, updated = 0;
-                for (const chunk of chunkArray(importData, 1000)) {
+                for (const chunk of chunkArray(deduped, 1000)) {
                     const values = chunk.map(item => [
                         item.release_key,
                         item.status,
-                        item.huser_defined_02
+                        item.child_po
                     ]);
 
                     const result = await new Promise((resolve, reject) => {
@@ -165,7 +292,7 @@ const server = http.createServer((req, res) => {
                 }
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: 'Import DSO hoàn tất (bulk)', stats: { inserted, updated, total: importData.length } }));
+                res.end(JSON.stringify({ message: 'Import DSO hoàn tất (bulk)', stats: { inserted, updated, total_received: importData.length, total_deduped: deduped.length } }));
             } catch (err) {
                 console.error('Lá»—i xá»­ lÃ½ import DSO:', err);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -208,19 +335,21 @@ const server = http.createServer((req, res) => {
                     INSERT INTO bbrreport_raw (child_po, parent_po, sku, qty_bbr, remark)
                     VALUES ?
                     ON DUPLICATE KEY UPDATE 
-                        qty_bbr = VALUES(qty_bbr),
-                        remark = VALUES(remark)
+                        qty_bbr = VALUES(qty_bbr)
                 `;
 
                 let inserted = 0, updated = 0;
                 for (const chunk of chunkArray(importData, 1000)) {
-                    const values = chunk.map(item => [
-                        item.child_po,
-                        item.parent_po,
-                        item.sku,
-                        item.qty_bbr ?? 0,
-                        'Import Excel'
-                    ]);
+                    const values = chunk
+                        .filter(item => item.parent_po) // chỉ nhận nếu có PO
+                        .map(item => [
+                            item.child_po,
+                            item.parent_po,
+                            item.sku,
+                            item.qty_bbr ?? 0,
+                            item.remark || 'Import Excel'
+                        ]);
+                    if (values.length === 0) continue;
 
                     const result = await new Promise((resolve, reject) => {
                         pool.query(sql, [values], (err, res) => err ? reject(err) : resolve(res));
@@ -244,7 +373,7 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/check' && req.method === 'GET') {
         const sql = `
             SELECT 
-                r.release_key, r.sku, r.release_qty, 
+                r.release_key, r.release_date, r.sku, r.release_qty, 
                 d.child_po, 
                 b.parent_po, b.qty_bbr
             FROM releasing r
@@ -296,15 +425,21 @@ const server = http.createServer((req, res) => {
             try {
                 const importData = JSON.parse(body);
                 const today = new Date().toISOString().split('T')[0]; // Láº¥y ngÃ y hiá»‡n táº¡i YYYY-MM-DD
+                const mode = reqUrl.searchParams.get('mode');
 
-                // 1. XÃ³a toÃ n bá»™ dá»¯ liá»‡u cÅ©
-                await new Promise((resolve, reject) => {
-                    pool.query('DELETE FROM inventory', (err) => err ? reject(err) : resolve());
-                });
+                // 1. XÃ³a toÃ n bá»™ dá»¯ liá»‡u cÅ© (Trừ khi mode là 'merge')
+                if (mode !== 'merge') {
+                    await new Promise((resolve, reject) => {
+                        pool.query('DELETE FROM inventory', (err) => err ? reject(err) : resolve());
+                    });
+                }
 
                 // 2. Chuáº©n bá»‹ dá»¯ liá»‡u Insert (Bulk Insert cho nhanh)
                 if (importData.length > 0) {
-                    const values = importData.map(item => [item.parent_po_invent, item.sku_inventory, item.qty_invetory, item.date_rcv, today]);
+                    const values = importData.map(item => {
+                        const qty = item.available_ctn ?? item.qty_invetory ?? item.allocated_ctn ?? 0;
+                        return [item.parent_po_invent, item.sku_inventory, qty, item.date_rcv, today];
+                    });
                     const sql = 'INSERT INTO inventory (parent_po_invent, sku_inventory, qty_invetory, date_rcv, date_update) VALUES ?';
                     await new Promise((resolve, reject) => {
                         pool.query(sql, [values], (err) => err ? reject(err) : resolve());
@@ -317,6 +452,36 @@ const server = http.createServer((req, res) => {
                 console.error('Lá»—i Import Inventory:', err);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Lá»—i xá»­ lÃ½ dá»¯ liá»‡u import', details: err.message }));
+            }
+        });
+        return;
+    }
+
+    // --- API: Update Inventory Single Row ---
+    if (pathname === '/api/inventory/update' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            let conn;
+            try {
+                const { id, qty } = JSON.parse(body);
+                if (!id || qty === undefined || qty < 0) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Dữ liệu không hợp lệ' }));
+                }
+                conn = await pool.promise().getConnection();
+                const qtyCol = await getInventoryQtyColumn(conn);
+                if (!qtyCol) throw new Error('Không tìm thấy cột số lượng');
+                
+                const today = new Date().toISOString().slice(0,10);
+                const [result] = await conn.query(`UPDATE inventory SET ${qtyCol} = ?, date_update = ? WHERE id = ?`, [qty, today, id]);
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Updated', affected: result.affectedRows }));
+            } catch (err) {
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: err.message }));
+            } finally {
+                if (conn) conn.release();
             }
         });
         return;
@@ -413,7 +578,7 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // --- API MODEL: Allocate (Releasing -> DSO -> BBR -> Inventory) ---
+// --- API MODEL: Allocate (Releasing -> DSO -> BBR -> Inventory) ---
     if (pathname === '/api/allocate' && req.method === 'GET') {
         const sql = `
             SELECT 
@@ -431,6 +596,434 @@ const server = http.createServer((req, res) => {
         pool.query(sql, (err, results) => {
             if (err) res.writeHead(500).end(JSON.stringify({ error: err.message }));
             else res.writeHead(200, {'Content-Type': 'application/json'}).end(JSON.stringify(results));
+        });
+        return;
+    }
+
+    // --- API: Check CLP (detail_pickinglist) ---
+    if (pathname === '/api/check_clp' && req.method === 'GET') {
+        // Trước đây chỉ lấy dòng chưa chọn (is_selected = 0) nên giao diện sẽ trống nếu tất cả đã được chọn.
+        // Để màn hình luôn thấy dữ liệu và dùng bộ lọc "Is Selected" trên UI, lấy toàn bộ bảng rồi để client lọc.
+        const sql = 'SELECT * FROM detail_pickinglist ORDER BY due_date+0 ASC, id ASC LIMIT 2000';
+        pool.query(sql, (err, results) => {
+            if (err) res.writeHead(500).end(JSON.stringify({ error: err.message }));
+            else res.writeHead(200, {'Content-Type': 'application/json'}).end(JSON.stringify(results));
+        });
+        return;
+    }
+
+    // --- API: Update is_selected for detail_pickinglist ---
+    if (pathname.startsWith('/api/check_clp/update') && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            try {
+                const payload = JSON.parse(body || '{}');
+                const id = Number(payload.id);
+                const isSelected = payload.is_selected ? 1 : 0;
+                const remark = payload.remark; // Nhận thêm remark
+                if (!Number.isFinite(id)) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'id không hợp lệ' }));
+                }
+                // Cập nhật is_selected và remark (nếu có)
+                const sql = 'UPDATE detail_pickinglist SET is_selected = ?, remark = COALESCE(?, remark), updated_at = NOW() WHERE id = ?';
+                await new Promise((resolve, reject) => {
+                    pool.query(sql, [isSelected, remark, id], (err, result) => err ? reject(err) : resolve(result));
+                });
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'updated', id, is_selected: isSelected }));
+            } catch (err) {
+                console.error('Lỗi update is_selected:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi update is_selected', details: err.message }));
+            }
+        });
+        return;
+    }
+
+    // --- API: Bulk update is_selected for detail_pickinglist ---
+    if (pathname === '/api/check_clp/update_bulk' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            try {
+                const updates = JSON.parse(body); // Array of { id, is_selected }
+                if (!Array.isArray(updates) || updates.length === 0) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Dữ liệu không hợp lệ' }));
+                }
+
+                // Build query: CASE WHEN id = ... THEN ...
+                const ids = updates.map(u => Number(u.id)).filter(Number.isFinite);
+                if (ids.length === 0) {
+                    res.writeHead(200, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ message: 'Không có ID hợp lệ' }));
+                }
+
+                let caseSql = 'CASE id';
+                const params = [];
+                updates.forEach(u => {
+                    caseSql += ' WHEN ? THEN ?';
+                    params.push(u.id, u.is_selected ? 1 : 0);
+                });
+                caseSql += ' END';
+                params.push(ids); // For WHERE IN (?)
+
+                const sql = `UPDATE detail_pickinglist SET is_selected = ${caseSql}, updated_at = NOW() WHERE id IN (?)`;
+                
+                await new Promise((resolve, reject) => {
+                    pool.query(sql, params, (err, result) => err ? reject(err) : resolve(result));
+                });
+
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Updated bulk', count: updates.length }));
+            } catch (err) {
+                console.error('Lỗi bulk update:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi server', details: err.message }));
+            }
+        });
+        return;
+    }
+
+    // --- API: Clear detail_pickinglist ---
+    if (pathname === '/api/check_clp/clear' && req.method === 'POST') {
+        (async () => {
+            let conn;
+            try {
+                conn = await pool.promise().getConnection();
+                await conn.beginTransaction();
+
+                // Đã bỏ logic hoàn trả tồn kho vì lúc Export Picking không còn trừ kho nữa
+
+                await conn.query('DELETE FROM detail_pickinglist');
+                await conn.commit();
+
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Đã xóa hết detail_pickinglist' }));
+            } catch (err) {
+                if (conn) await conn.rollback().catch(()=>{});
+                console.error('Lỗi clear detail_pickinglist:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi clear detail_pickinglist', details: err.message }));
+            } finally {
+                if (conn) conn.release();
+            }
+        })();
+        return;
+    }
+
+    // --- API: Delete unselected (is_selected = 0) from detail_pickinglist ---
+    if (pathname === '/api/check_clp/delete_unselected' && req.method === 'POST') {
+        const sql = 'DELETE FROM detail_pickinglist WHERE is_selected = 0';
+        pool.query(sql, (err, result) => {
+            if (err) {
+                console.error('Lỗi xóa unselected:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi server', details: err.message }));
+            } else {
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Deleted unselected', affected: result.affectedRows }));
+            }
+        });
+        return;
+    }
+
+    // --- API: Move selected CLP rows to outbound ---
+    if (pathname === '/api/check_clp/outbound' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            let conn;
+            try {
+                const payload = JSON.parse(body || '{}');
+                const ids = Array.isArray(payload.ids) ? payload.ids.map(Number).filter(Number.isFinite) : [];
+                const jobno = (payload.jobno || '').trim();
+
+                if (!jobno) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Thiếu jobno' }));
+                }
+                if (ids.length === 0) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Không có id nào' }));
+                }
+
+                conn = await pool.promise().getConnection();
+                await conn.beginTransaction();
+
+                // 1. Lấy dữ liệu các dòng được chọn từ detail_pickinglist
+                const [rows] = await conn.query(`
+                    SELECT d.*, m.loosecase, m.kindpallet
+                    FROM detail_pickinglist d
+                    LEFT JOIN masterdata m ON d.sku = m.sku
+                    WHERE d.id IN (?)
+                `, [ids]);
+
+                if (!rows.length) {
+                    await conn.rollback();
+                    res.writeHead(404, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Không tìm thấy bản ghi phù hợp' }));
+                }
+
+                const today = new Date().toISOString().slice(0,10);
+                
+                // Đã bỏ logic trừ tồn kho trong Export Outbound theo yêu cầu
+
+                // 3. Cập nhật Releasing: Status = 3 (Mapping ChildPO + SKU)
+                // Dùng Set để tránh update trùng nhiều lần cho cùng 1 cặp key
+                const relSet = new Set();
+                for (const r of rows) {
+                    if (r.childpo && r.sku) {
+                        relSet.add(`${r.childpo}__${r.sku}`);
+                    }
+                }
+                for (const item of relSet) {
+                    const [cpo, sku] = item.split('__');
+                    // Update releasing thông qua join với dso (vì releasing gốc có thể không có child_po trực tiếp mà qua release_key)
+                    await conn.query(
+                        `UPDATE releasing r 
+                         INNER JOIN dso d ON r.release_key = d.release_key 
+                         SET r.status = 3 
+                         WHERE d.child_po = ? AND r.sku = ?`,
+                        [cpo, sku]
+                    );
+                }
+
+                // 4. Insert vào Outbound
+                const insertSql = `
+                    INSERT INTO outbound
+                    (jobno, rsl, parentpo, childpo, fdc, sku, carton, lct, cbm, datercv, container, seal, datestuff, looscarton, kindpallet, remark)
+                    VALUES ?
+                `;
+                const values = rows.map(r => [
+                    jobno,
+                    r.release_key || '',
+                    r.parentpo || r.parent_po || null,
+                    r.childpo || r.child_po || '',
+                    (r.childpo || r.child_po || '').toString().substring(0,3),
+                    r.sku || '',
+                    Number(r.carton_qty) || 0,
+                    r.loading_type || null,
+                    Number(r.total_cbm) || 0,
+                    today,
+                    r.container || null,
+                    r.seal || null,
+                    r.datestuff || null,
+                    r.loosecase || null,
+                    r.kindpallet || null,
+                    r.remark || null
+                ]);
+                
+                const [insertResult] = await conn.query(insertSql, [values]);
+
+                // 5. Xóa khỏi detail_pickinglist
+                await conn.query('DELETE FROM detail_pickinglist WHERE id IN (?)', [ids]);
+
+                await conn.commit();
+
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Đã chuyển outbound', inserted: insertResult.affectedRows || values.length, deleted: ids.length }));
+            } catch (err) {
+                if (conn) await conn.rollback().catch(()=>{});
+                console.error('Lỗi chuyển outbound:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi chuyển outbound', details: err.message }));
+            } finally {
+                if (conn) conn.release();
+            }
+        });
+        return;
+    }
+
+    // --- API: Split carton for detail_pickinglist ---
+    if (pathname.startsWith('/api/check_clp/split') && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            let conn;
+            try {
+                const payload = JSON.parse(body || '{}');
+                const origId = Number(payload.id);
+                const splitCarton = Number(payload.split_carton);
+                const row = payload.row || {};
+                const cartonQty = Number(row.carton_qty) || 0;
+                if (!Number.isFinite(origId) || !Number.isFinite(splitCarton) || splitCarton <= 0 || splitCarton >= cartonQty) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Dữ liệu tách không hợp lệ' }));
+                }
+                const todayStr = new Date().toISOString().slice(0,10);
+                const toDateOnly = (val) => {
+                    if (!val) return todayStr;
+                    const d = new Date(val);
+                    if (isNaN(d)) return todayStr;
+                    return d.toISOString().slice(0,10);
+                };
+                const cbmPer = Number(row.cbm_per_carton) || 0;
+                const remainCarton = cartonQty - splitCarton;
+                const remainCbm = cbmPer * remainCarton;
+                const newCarton = splitCarton;
+                const newCbm = cbmPer * newCarton;
+
+                conn = await pool.promise().getConnection();
+                await conn.beginTransaction();
+
+                // update original
+                await conn.query(
+                    'UPDATE detail_pickinglist SET carton_qty = ?, total_cbm = ?, updated_at = NOW() WHERE id = ?',
+                    [remainCarton, remainCbm, origId]
+                );
+
+                // insert new row (copy most fields)
+                const pickingDate = toDateOnly(row.picking_date);
+                const pickingNo = row.picking_no || `split${Date.now()}`;
+                const insertSql = `
+                    INSERT INTO detail_pickinglist 
+                    (picking_date, picking_no, source_file, hubdc, fdc, sku, sku_name, carton_qty,
+                     length_cm, width_cm, height_cm, cbm_per_carton, total_cbm, loading_type, is_selected,
+                     remark, release_key, due_date, parentpo, childpo)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                `;
+                const insertVals = [
+                    pickingDate,
+                    pickingNo,
+                    row.source_file || null,
+                    row.hubdc || '',
+                    row.fdc || '',
+                    row.sku || '',
+                    row.sku_name || null,
+                    newCarton,
+                    row.length_cm || null,
+                    row.width_cm || null,
+                    row.height_cm || null,
+                    cbmPer || 0,
+                    newCbm || 0,
+                    row.loading_type || 'PALLET',
+                    row.is_selected ? 1 : 0,
+                    row.remark || null,
+                    row.release_key || null,
+                    row.due_date || null,
+                    row.parentpo || row.parent_po || null,
+                    row.childpo || row.child_po || null
+                ];
+                const [insertResult] = await conn.query(insertSql, insertVals);
+                await conn.commit();
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({
+                    message: 'split_ok',
+                    updated: { id: origId, carton_qty: remainCarton, total_cbm: remainCbm },
+                    inserted: { id: insertResult.insertId, carton_qty: newCarton, total_cbm: newCbm }
+                }));
+            } catch (err) {
+                if (conn) await conn.rollback().catch(()=>{});
+                console.error('Lỗi split carton:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi split carton', details: err.message }));
+            } finally {
+                if (conn) conn.release();
+            }
+        });
+        return;
+    }
+
+    // --- API: Export picking list (insert các dòng được chọn) ---
+    if (pathname === '/api/picking/export' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            try {
+                const rows = JSON.parse(body);
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    res.writeHead(400, {'Content-Type': 'application/json'});
+                    return res.end(JSON.stringify({ error: 'Không có dòng nào để export' }));
+                }
+
+                const today = new Date();
+                const ymd = today.toISOString().slice(0,10);
+                const pickingNo = `Job${ymd.replace(/-/g, '')}`;
+                
+                const toInsert = [];
+
+                let conn;
+                try {
+                    conn = await pool.promise().getConnection();
+                    await conn.beginTransaction();
+
+                    // Xử lý từng dòng: Kiểm tra tồn tại -> Update hoặc Insert
+                    for (const item of rows) {
+                        const childPo = item.childpo || item.child_po || '';
+                        const sku = item.sku || '';
+                        let updated = false;
+
+                        // 1. Nếu tìm thấy childpo + sku -> update is_selected = 1
+                        if (childPo && sku) {
+                            const [updRes] = await conn.query(
+                                'UPDATE detail_pickinglist SET is_selected = 1, updated_at = NOW() WHERE childpo = ? AND sku = ?', 
+                                [childPo, sku]
+                            );
+                            if (updRes.affectedRows > 0) updated = true;
+                        }
+
+                        // 2. Nếu chưa có (thêm mới) -> chuẩn bị Insert với is_selected = 1
+                        if (!updated) {
+                            const releaseQty = Number(item.release_qty) || 0;
+                            const invQty = Number(item.qty_invetory) || 0;
+                            const cartonQty = releaseQty <= invQty ? releaseQty : invQty;
+                            const cbmPerCarton = Number(item.cbm_per_carton) || 0;
+                            const totalCbm = cbmPerCarton * cartonQty;
+                            
+                            let dueDate = ymd;
+                            if (item.date_rcv) {
+                                const rcv = new Date(item.date_rcv);
+                                const diffMs = today - rcv;
+                                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                                dueDate = Number.isFinite(diffDays) ? String(diffDays) : ymd;
+                            }
+
+                            toInsert.push([
+                                ymd, pickingNo, item.source_file||null, item.hubdc||'', item.fdc||'',
+                                sku, item.sku_name||null, cartonQty,
+                                item.length_cm||null, item.width_cm||null, item.height_cm||null,
+                                cbmPerCarton, totalCbm, item.loading_type||'PALLET',
+                                (item.is_selected !== undefined ? item.is_selected : 1), 
+                                item.remark||null, item.release_key||null, dueDate,
+                                item.parentpo || item.parent_po || null, childPo
+                            ]);
+                        }
+                    }
+
+                    // 3. Thực hiện Insert
+                    if (toInsert.length > 0) {
+                        const sqlInsert = `
+                            INSERT INTO detail_pickinglist
+                            (picking_date, picking_no, source_file, hubdc, fdc, sku, sku_name, carton_qty,
+                             length_cm, width_cm, height_cm, cbm_per_carton, total_cbm, loading_type, is_selected,
+                             remark, release_key, due_date, parentpo, childpo)
+                            VALUES ?
+                        `;
+                        await conn.query(sqlInsert, [toInsert]);
+                    }
+
+                    await conn.commit();
+                    res.writeHead(200, {'Content-Type': 'application/json'});
+                    res.end(JSON.stringify({ 
+                        message: 'Đã xử lý picking list', 
+                        inserted: toInsert.length, 
+                        updated: rows.length - toInsert.length,
+                        picking_no: pickingNo 
+                    }));
+                } catch (err) {
+                    if (conn) await conn.rollback().catch(()=>{});
+                    throw err;
+                } finally {
+                    if (conn) conn.release();
+                }
+            } catch (err) {
+                console.error('Lỗi export picking:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi export picking', details: err.message }));
+            }
         });
         return;
     }
@@ -466,6 +1059,18 @@ const server = http.createServer((req, res) => {
     if (pathname === '/allowcate.html') {
         fileName = 'allowcate.html';
     }
+    if (pathname === '/allowcate_1.html') {
+        fileName = 'allowcate_1.html';
+    }
+    if (pathname === '/check_clp.html') {
+        fileName = 'check_clp.html';
+    }
+    if (pathname === '/create_picking_list.html') {
+        fileName = 'create_picking_list.html';
+    }
+    if (pathname === '/pallet.html') {
+        fileName = 'pallet.html';
+    }
 
     const filePath = path.join(__dirname, fileName);
 
@@ -486,10 +1091,3 @@ const server = http.createServer((req, res) => {
 server.listen(port, () => {
     console.log(`Server Ä‘ang cháº¡y táº¡i http://localhost:${port}/`);
 });
-
-
-
-
-
-
-

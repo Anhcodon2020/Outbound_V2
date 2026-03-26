@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danh sách Release (Allocate View 1)</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
+        h1 { color: #333; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        .search-container { margin-bottom: 15px; display: flex; gap: 10px; }
+        .search-input { padding: 10px; width: 100%; max-width: 300px; border: 1px solid #ddd; border-radius: 5px; }
+        .qty-col { font-weight: bold; color: #28a745; text-align: right; }
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 600px; border-radius: 8px; position: relative; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover, .close:focus { color: black; text-decoration: none; cursor: pointer; }
+        tr.clickable-row { cursor: pointer; transition: background 0.2s; }
+        tr.clickable-row:hover { background-color: #e2e6ea; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Thanh điều hướng -->
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/releasing.html">📦 Releasing</a>
+        <a href="/inventory.html">🏭 Inventory</a>
+        <a href="/allowcate_1.html">📋 Allocate View 1</a>
+        <a href="/create_picking_list.html">📝 Picking List</a>
+    </div>
+
+    <h1>Danh sách Release Chi Tiết</h1>
+
+    <!-- Thống kê theo Hub DC -->
+    <div style="margin-bottom: 20px; max-width: 800px;">
+        <table id="summaryTable" style="width: 100%; border-collapse: collapse; background: white; border: 1px solid #ddd; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <thead style="background: #f8f9fa;">
+                <tr>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd; color: #333;">Hub DC</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd; text-align: right; color: #333;">Tổng Carton</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd; text-align: right; color: #333;">Tổng CBM (m³)</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- Thống kê ĐÃ CHỌN (Selection Summary) -->
+    <div id="selectedStats" style="background: #e8f5e9; padding: 10px 15px; border-radius: 5px; margin-bottom: 15px; display: none; align-items: center; gap: 20px; border: 1px solid #c3e6cb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+        <span style="font-weight: bold; color: #155724; font-size: 1.1em;">✅ Đã chọn: <span id="selCount">0</span> dòng</span>
+        <span style="font-size: 1.1em;">📦 Thực xuất: <span id="selQty" style="font-weight:bold; color:#333;">0</span> ctn</span>
+        <span style="font-size: 1.1em;">📦 Tổng CBM: <span id="selCbm" style="font-weight:bold; color:#d63384;">0.000</span> m³</span>
+    </div>
+
+    <!-- Ô tìm kiếm -->
+    <div class="search-container">
+        <select id="hubFilter" class="search-input" style="max-width: 200px;" onchange="filterData()">
+            <option value="">-- Tất cả Hub DC --</option>
+        </select>
+        <select id="invFilter" class="search-input" style="max-width: 200px;" onchange="filterData()">
+            <option value="">-- Tất cả Inventory --</option>
+            <option value="yes">Inventory > 0</option>
+        </select>
+        <input type="text" id="searchInput" class="search-input" placeholder="🔍 Tìm Release Key, SKU, PO, FDC..." oninput="filterData()">
+        <button onclick="exportPicking()" style="padding: 10px 15px; background: #ffc107; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: #333;">📤 Export Picking</button>
+    </div>
+
+    <!-- Bảng dữ liệu -->
+    <table id="releaseTable">
+        <thead>
+            <tr>
+                <th>Release Key</th>
+                <th>Ngày Release</th>
+                <th>Child PO</th>
+                <th>Parent PO</th>
+                <th>FDC</th>
+                <th>Hub DC</th>
+                <th>SKU</th>
+                <th>Inventory Qty</th>
+                <th>Remaining</th>
+                <th>Date Rcv</th>
+                <th>Total CBM (m³)</th>
+                <th style="text-align: right;">Số Carton (Qty)</th>
+                <th style="text-align: center;">Chọn <input type="checkbox" id="masterCheck" onclick="toggleAll(this)"></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="13" style="text-align:center">Đang tải dữ liệu...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal Chi tiết Tồn kho -->
+<div id="invModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <h2 id="modalTitle" style="margin-top:0;">Chi tiết Tồn kho</h2>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+    let allData = [];
+    let inventoryData = [];
+    let dsoData = [];
+    let bbrData = [];
+    let dcData = [];
+    let preparedData = [];
+    let masterData = [];
+    let currentViewData = [];
+    let selectedIds = new Set();
+
+    // Hàm format ngày tháng (yyyy-mm-dd -> dd/mm/yyyy)
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (isNaN(date)) return dateString;
+        return date.toLocaleDateString('vi-VN');
+    }
+
+    // Hàm render bảng
+    function renderTable(data) {
+        currentViewData = data;
+        renderHubSummary(data); // Cập nhật bảng thống kê
+        const tbody = document.querySelector('#releaseTable tbody');
+        tbody.innerHTML = '';
+
+        const masterCheck = document.getElementById('masterCheck');
+        if (masterCheck) {
+            const allSelected = data.length > 0 && data.every(item => selectedIds.has(item.id));
+            masterCheck.checked = allSelected;
+        }
+
+        // Map Master Data để lấy CBM cho tính toán tổng hợp
+        const masterMap = new Map(masterData.map(m => [m.sku, Number(m.cbm) || 0]));
+
+        // Tính toán số lượng còn lại (Remaining) theo logic trừ dần dựa trên các dòng ĐÃ CHỌN
+        const runningStock = new Map();
+        let totalSelectedQty = 0;
+        let totalSelectedCbm = 0;
+
+        // Duyệt qua toàn bộ danh sách (đã sort) để tính toán trừ dần và tổng hợp
+        preparedData.forEach(item => {
+             const key = `${item.parent_po}|${item.sku}`;
+             // Khởi tạo tồn kho ban đầu cho key này nếu chưa có
+             if (!runningStock.has(key)) {
+                 runningStock.set(key, item.inventory_qty || 0);
+             }
+             let current = runningStock.get(key);
+             
+             if (selectedIds.has(item.id)) {
+                 const order = Number(item.release_qty) || 0;
+                 // Nếu order < inventory: còn lại = inventory - order
+                 // Nếu inventory < order: còn lại = 0 (trừ hết inventory hiện có)
+                 // Số lượng thực tế lấy (used) = min(order, current_stock)
+                 const used = (order < current) ? order : current;
+                 const rem = current - used;
+                 
+                 runningStock.set(key, rem);
+                 item.dynamic_remaining = rem;
+                 
+                 // Cộng dồn thống kê
+                 totalSelectedQty += used;
+                 const itemCbm = masterMap.get(item.sku) || 0;
+                 totalSelectedCbm += (used * itemCbm);
+
+             } else {
+                 item.dynamic_remaining = current;
+             }
+        });
+
+        // Cập nhật giao diện thống kê Selected
+        const statsDiv = document.getElementById('selectedStats');
+        if (selectedIds.size > 0) {
+            statsDiv.style.display = 'flex';
+            document.getElementById('selCount').innerText = selectedIds.size;
+            document.getElementById('selQty').innerText = totalSelectedQty.toLocaleString();
+            document.getElementById('selCbm').innerText = totalSelectedCbm.toFixed(3);
+        } else {
+            statsDiv.style.display = 'none';
+        }
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center">Không có dữ liệu phù hợp</td></tr>';
+            return;
+        }
+
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            row.classList.add('clickable-row');
+            row.title = 'Click để xem chi tiết tồn kho';
+            row.onclick = () => openModal(item); // Truyền toàn bộ item để lấy ParentPO
+            const isChecked = selectedIds.has(item.id) ? 'checked' : '';
+            const isDisabled = (!isChecked && item.dynamic_remaining === 0) ? 'disabled' : '';
+
+            row.innerHTML = `
+                <td>${item.release_key || ''}</td>
+                <td>${formatDate(item.release_date)}</td>
+                <td>${item.child_po || ''}</td>
+                <td>${item.parent_po || ''}</td>
+                <td>${item.fdc || ''}</td>
+                <td>${item.hub_dc || ''}</td>
+                <td><strong>${item.sku || ''}</strong></td>
+                <td style="font-weight:bold; color: ${item.inventory_qty >= item.release_qty ? '#28a745' : '#dc3545'}">${item.inventory_qty}</td>
+                <td style="font-weight:bold; color: ${item.dynamic_remaining === 0 ? '#dc3545' : '#6610f2'}">${item.dynamic_remaining}</td>
+                <td>${item.date_rcv_str || ''}</td>
+                <td style="font-weight:bold; color: #0d6efd;">${item.total_cbm || '0.000'}</td>
+                <td class="qty-col">${item.release_qty || 0}</td>
+                <td style="text-align:center;"><input type="checkbox" onclick="toggleRow(event, ${item.id})" ${isChecked} ${isDisabled}></td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function toggleAll(source) {
+        const checked = source.checked;
+        currentViewData.forEach(item => {
+            if (checked) selectedIds.add(item.id);
+            else selectedIds.delete(item.id);
+        });
+        renderTable(currentViewData);
+    }
+
+    function toggleRow(event, id) {
+        event.stopPropagation();
+        if (selectedIds.has(id)) selectedIds.delete(id);
+        else selectedIds.add(id);
+        renderTable(currentViewData);
+    }
+
+    // Hàm render bảng thống kê Hub
+    function renderHubSummary(data) {
+        const tbody = document.querySelector('#summaryTable tbody');
+        tbody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:10px;">Không có dữ liệu</td></tr>';
+            return;
+        }
+
+        const summary = {};
+        let totalQty = 0;
+        let totalCbm = 0;
+
+        data.forEach(item => {
+            const hub = item.hub_dc || 'Khác';
+            
+            if (!summary[hub]) summary[hub] = { qty: 0, cbm: 0 };
+            
+            const qty = Number(item.release_qty) || 0;
+            const cbm = parseFloat(item.total_cbm) || 0;
+            
+            summary[hub].qty += qty;
+            summary[hub].cbm += cbm;
+            totalQty += qty;
+            totalCbm += cbm;
+        });
+
+        Object.keys(summary).sort().forEach(hub => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${hub}</strong></td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${summary[hub].qty.toLocaleString()}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; color: #0d6efd;">${summary[hub].cbm.toFixed(3)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        // Dòng tổng cộng
+        const totalRow = document.createElement('tr');
+        totalRow.style.backgroundColor = '#f0f2f5';
+        totalRow.innerHTML = `
+            <td style="padding: 8px; font-weight:bold;">TỔNG CỘNG</td>
+            <td style="padding: 8px; text-align: right; font-weight:bold;">${totalQty.toLocaleString()}</td>
+            <td style="padding: 8px; text-align: right; font-weight:bold; color: #dc3545;">${totalCbm.toFixed(3)}</td>
+        `;
+        tbody.appendChild(totalRow);
+    }
+
+    // Hàm mở modal hiển thị chi tiết tồn kho
+    function openModal(item) {
+        const sku = item.sku;
+        const modal = document.getElementById('invModal');
+        const title = document.getElementById('modalTitle');
+        const body = document.getElementById('modalBody');
+        
+        title.innerText = `Chi tiết SKU: ${sku}`;
+        
+        // --- Phần BBR Report Info ---
+        const parentPo = item.parent_po || ''; // Vẫn giữ để hiển thị
+        const childPo = item.child_po || '';
+        const releaseQty = Number(item.release_qty) || 0;
+        
+        // Lấy thông tin từ BBR
+        let bbrQty = 0;
+        if (childPo) {
+            // Lọc bbrData tìm các dòng khớp child_po và sku
+            const bbrMatches = bbrData.filter(b => b.child_po == childPo && b.sku == sku);
+            bbrQty = bbrMatches.reduce((acc, curr) => acc + (Number(curr.qty_bbr) || 0), 0);
+        }
+        
+        const isLess = releaseQty > bbrQty;
+        const color = isLess ? '#dc3545' : '#198754'; 
+        
+        let html = `
+            <div style="background:#f1f3f5; padding:10px; border-radius:5px; margin-bottom:15px; border:1px solid #ddd;">
+                <h3 style="margin-top:0; font-size:16px; border-bottom:1px solid #ccc; padding-bottom:5px;">Thông tin Order (BBR)</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                    <div>Parent PO:</div> <div style="font-weight:bold;">${parentPo || 'N/A'}</div>
+                    <div>Số lượng Releasing:</div> <div style="font-weight:bold;">${releaseQty}</div>
+                    <div>Số lượng BBR:</div> <div style="font-weight:bold; color:${color};">${bbrQty} ${isLess ? '⚠️' : '✅'}</div>
+                </div>
+                ${isLess ? `<div style="color:#dc3545; font-weight:bold; margin-top:5px;">⚠️ Cảnh báo: Releasing lớn hơn BBR (${releaseQty - bbrQty})</div>` : ''}
+            </div>
+        `;
+        
+        // Lọc dữ liệu inventory theo SKU
+        const items = inventoryData.filter(i => i.sku_inventory === sku);
+        // Tính tổng tồn
+        const total = items.reduce((sum, i) => sum + (Number(i.qty_invetory) || 0), 0);
+        
+        html += `<div style="margin-bottom:15px; font-size:16px;">Tổng tồn kho hiện tại: <strong style="color:#28a745; font-size:1.2em;">${total}</strong></div>`;
+        
+        if (items.length === 0) {
+            html += '<p>Không có dữ liệu tồn kho cho SKU này.</p>';
+        } else {
+            html += '<table style="width:100%; border-collapse: collapse;">';
+            html += '<thead style="background:#f8f9fa;"><tr><th style="padding:8px; border-bottom:1px solid #ddd;">Parent PO</th><th style="padding:8px; border-bottom:1px solid #ddd;">Ngày nhận (Date Rcv)</th><th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">Số lượng</th></tr></thead>';
+            html += '<tbody>';
+            
+            // Sắp xếp theo ngày nhập (FIFO)
+            items.sort((a, b) => new Date(a.date_rcv || 0) - new Date(b.date_rcv || 0));
+            
+            items.forEach(i => {
+                html += `<tr>
+                    <td style="padding:8px; border-bottom:1px solid #eee;">${i.parent_po_invent || ''}</td>
+                    <td style="padding:8px; border-bottom:1px solid #eee;">${formatDate(i.date_rcv)}</td>
+                    <td style="padding:8px; border-bottom:1px solid #eee; text-align:right; font-weight:bold;">${i.qty_invetory || 0}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+        }
+        
+        body.innerHTML = html;
+        modal.style.display = 'block';
+    }
+
+    function closeModal() {
+        document.getElementById('invModal').style.display = 'none';
+    }
+
+    // Đóng modal khi click ra ngoài vùng nội dung
+    window.onclick = function(event) {
+        const modal = document.getElementById('invModal');
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    }
+
+    // Hàm lọc dữ liệu
+    function filterData() {
+        const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
+        const selectedHub = document.getElementById('hubFilter').value;
+        const invFilter = document.getElementById('invFilter').value;
+        
+        let filtered = preparedData;
+
+        if (selectedHub) {
+            filtered = filtered.filter(item => (item.hub_dc || '') === selectedHub);
+        }
+
+        if (invFilter === 'yes') {
+            filtered = filtered.filter(item => (item.inventory_qty || 0) > 0);
+        }
+
+        if (keyword) {
+            filtered = filtered.filter(item => {
+            const key = (item.release_key || '').toLowerCase();
+            const sku = (item.sku || '').toLowerCase();
+            const childPo = (item.child_po || '').toLowerCase();
+            const parentPo = (item.parent_po || '').toLowerCase();
+            const fdc = (item.fdc || '').toLowerCase();
+            const hub = (item.hub_dc || '').toLowerCase();
+
+            return key.includes(keyword) || 
+                   sku.includes(keyword) ||
+                   childPo.includes(keyword) ||
+                   parentPo.includes(keyword) ||
+                   fdc.includes(keyword) ||
+                   hub.includes(keyword);
+        });
+        }
+
+        renderTable(filtered);
+    }
+
+    function buildHubOptions() {
+        const select = document.getElementById('hubFilter');
+        // Giữ lại option đầu tiên
+        while (select.options.length > 1) select.remove(1);
+
+        const hubs = new Set();
+        preparedData.forEach(item => {
+            if (item.hub_dc) hubs.add(item.hub_dc);
+        });
+
+        Array.from(hubs).sort().forEach(hub => {
+            const opt = document.createElement('option');
+            opt.value = hub;
+            opt.textContent = hub;
+            select.appendChild(opt);
+        });
+    }
+
+    function prepareAndRenderData() {
+        const dsoMap = new Map(dsoData.map(d => [d.release_key, d]));
+        const bbrMap = new Map(bbrData.map(b => [`${b.child_po}|${b.sku}`, b]));
+        const dcMap = new Map(dcData.map(dc => {
+            const keyNum = Number(dc.code_dc);
+            return Number.isNaN(keyNum) ? null : [keyNum, dc];
+        }).filter(Boolean));
+        // Map Master Data để lấy CBM
+        const masterMap = new Map(masterData.map(m => [m.sku, Number(m.cbm) || 0]));
+
+        preparedData = allData.map(item => {
+            const dsoItem = dsoMap.get(item.release_key) || {};
+            const childPo = dsoItem.child_po || '';
+
+            const bbrItem = bbrMap.get(`${childPo}|${item.sku}`) || {};
+            const parentPo = bbrItem.parent_po || '';
+
+            const hubCodeNum = Number((childPo || '').toString().substring(0, 3));
+            const dcInfo = dcMap.get(hubCodeNum) || {};
+            const fdc = dcInfo.fdc || dcInfo.fdc_name || '';
+            const hub_dc = dcInfo.hub_dc || dcInfo.hub || '';
+
+            const invItems = inventoryData.filter(i => i.parent_po_invent == parentPo && i.sku_inventory == item.sku);
+            const inventory_qty = invItems.reduce((sum, i) => sum + (Number(i.qty_invetory) || 0), 0);
+            
+            // Lấy danh sách ngày, sắp xếp giảm dần (mới nhất lên đầu) và lấy ngày đầu tiên
+            const dates = invItems.map(i => i.date_rcv).filter(d => d);
+            dates.sort((a, b) => new Date(b) - new Date(a));
+            
+            const date_rcv_raw = dates.length > 0 ? dates[0] : null;
+            const date_rcv_str = date_rcv_raw ? formatDate(date_rcv_raw) : '';
+            
+            // Tính toán CBM theo yêu cầu:
+            // Nếu Order < Inventory -> CBM * Order
+            // Nếu Order > Inventory -> CBM * Inventory
+            // Tương đương: CBM * Min(Order, Inventory)
+            const releaseQty = Number(item.release_qty) || 0;
+            const skuCbm = masterMap.get(item.sku) || 0;
+            const qtyForCbm = (releaseQty < inventory_qty) ? releaseQty : inventory_qty;
+            const total_cbm = (qtyForCbm * skuCbm).toFixed(3);
+
+            return { ...item, child_po: childPo, parent_po: parentPo, fdc, hub_dc, inventory_qty, date_rcv_str, date_rcv_raw, total_cbm };
+        });
+
+        // Sắp xếp theo yêu cầu: Ngày Release tăng dần, sau đó Số Carton giảm dần
+        preparedData.sort((a, b) => {
+            const dateA = new Date(a.release_date || 0);
+            const dateB = new Date(b.release_date || 0);
+
+            if (dateA.getTime() !== dateB.getTime()) {
+                return dateA - dateB; // Ngày Release tăng dần
+            }
+            return (Number(b.release_qty) || 0) - (Number(a.release_qty) || 0); // Số Carton giảm dần
+        });
+
+        buildHubOptions();
+        filterData(); // Initial render
+    }
+
+    async function exportPicking() {
+        const selectedItems = currentViewData.filter(item => selectedIds.has(item.id));
+        if (selectedItems.length === 0) {
+            alert('Vui lòng chọn ít nhất 1 dòng để export.');
+            return;
+        }
+
+        if (!confirm(`Bạn có chắc muốn export ${selectedItems.length} dòng sang Picking List?\n(Ngày Picking = Hôm nay, is_select = 0)`)) return;
+
+        const masterMap = new Map(masterData.map(m => [m.sku, m]));
+
+        const payload = selectedItems.map(item => {
+            const mData = masterMap.get(item.sku) || {};
+            const skuCbm = Number(mData.cbm) || 0;
+            
+            // Quy tắc số lượng: Min(Order, Inventory)
+            const releaseQty = Number(item.release_qty) || 0;
+            const invQty = item.inventory_qty || 0;
+            // Server sẽ tính lại logic Min này nếu ta gửi cả 2, nhưng ta gửi số đã tính sẵn cho chắc chắn
+            const exportQty = (releaseQty < invQty) ? releaseQty : invQty;
+            
+            return {
+                release_key: item.release_key,
+                sku: item.sku,
+                sku_name: mData.description,
+                // Gửi số lượng cần lấy thực tế (đã so sánh với tồn kho)
+                release_qty: exportQty,
+                qty_invetory: invQty,
+                date_rcv: item.date_rcv_raw, // Gửi ngày gốc để server tính Due Date
+                parent_po: item.parent_po,
+                child_po: item.child_po,
+                hubdc: item.hub_dc,
+                fdc: item.fdc,
+                cbm_per_carton: skuCbm,
+                length_cm: mData.length,
+                width_cm: mData.width,
+                height_cm: mData.height,
+                is_selected: 0, // Yêu cầu: is_select = 0
+                remark: 'Export từ Allowcate View 1'
+            };
+        });
+
+        try {
+            const res = await fetch('/api/picking/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+            if (res.ok) {
+                alert(`✅ Export thành công!\nPicking No: ${json.picking_no}\nSố dòng: ${json.inserted}`);
+            } else {
+                alert('Lỗi export: ' + (json.error || json.message));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Lỗi kết nối server');
+        }
+    }
+
+    // Gọi API lấy dữ liệu khi trang tải xong
+    Promise.all([
+        fetch('/api/releasing').then(res => res.json()),
+        fetch('/api/inventory').then(res => res.json()),
+        fetch('/api/dso').then(res => res.json()),
+        fetch('/api/bbr').then(res => res.json()),
+        fetch('/api/dc').then(res => res.json()),
+        fetch('/api/masterdata').then(res => res.json())
+    ])
+    .then(([releasing, inventory, dso, bbr, dc, master]) => {
+            allData = Array.isArray(releasing) ? releasing.filter(r => r.status === 1) : [];
+            inventoryData = Array.isArray(inventory) ? inventory : [];
+            dsoData = Array.isArray(dso) ? dso : [];
+            bbrData = Array.isArray(bbr) ? bbr : [];
+            dcData = Array.isArray(dc) ? dc : [];
+            masterData = Array.isArray(master) ? master : [];
+            prepareAndRenderData();
+        })
+    .catch(err => console.error('Lỗi tải dữ liệu:', err));
+</script>
+
+</body>
+</html>

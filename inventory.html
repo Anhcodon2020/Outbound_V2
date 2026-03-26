@@ -30,7 +30,8 @@
         /* Style cho Search Box */
         .search-container { margin-bottom: 15px; }
         .search-input { padding: 10px; width: 100%; max-width: 300px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-
+        .btn-edit { background-color: #ffc107; color: #333; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .btn-edit:hover { background-color: #e0a800; }
     </style>
 </head>
 <body>
@@ -44,19 +45,25 @@
         <a href="/inventory.html">🏭 Inventory</a>
         <a href="/masterdata.html">🗂️ Master Data</a>
         <a href="/check.html">✅ Check Data</a>
-        <a href="/allowcate.html">📋 Allocate</a>
+        <a href="/allowcate_1.html">📋 Allocate</a>
     </div>
 
     <h1>Quản lý Tồn Kho (Inventory)</h1>
 
     <div class="import-area">
-        <strong>Import Excel (Xóa cũ & Thêm mới):</strong>
+        <strong>Import Excel:</strong>
         <input type="file" id="excelFile" accept=".xlsx, .xls" />
-        <button class="btn-import" onclick="importExcel()">📤 Tải lên & Cập nhật</button>
+        <label style="margin-left: 10px; display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;">
+            <input type="checkbox" id="chkMerge" style="width: auto; margin: 0;"> Giữ tồn kho cũ (Gộp thêm)
+        </label>
+        <button class="btn-import" onclick="importExcel()">📤 Tải lên</button>
     </div>
     
     <div class="search-container" style="display: flex; justify-content: space-between; align-items: center;">
-        <input type="text" id="skuSearch" class="search-input" placeholder="🔍 Tìm kiếm theo SKU..." oninput="filterData()">
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="skuSearch" class="search-input" placeholder="🔍 Tìm kiếm theo SKU..." oninput="filterData()">
+            <input type="text" id="parentPoSearch" class="search-input" placeholder="🔍 Tìm Parent PO..." oninput="filterData()">
+        </div>
         <div style="font-size: 18px; font-weight: bold; background: #fff; padding: 10px 20px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
             📦 Tổng CBM: <span id="grandTotalCbm" style="color: #28a745; font-size: 1.2em;">0.0000</span> m³
         </div>
@@ -72,6 +79,7 @@
                 <th>Date Receive</th>
                 <th>Total CBM (m³)</th>
                 <th>Date Update</th>
+                <th>Hành động</th>
             </tr>
         </thead>
         <tbody>
@@ -115,6 +123,9 @@
                 <td>${formatDate(item.date_rcv)}</td>
                 <td style="font-weight:bold; color:#28a745;">${itemCbm.toFixed(4)}</td>
                 <td>${formatDate(item.date_update)}</td>
+                <td>
+                    <button class="btn-edit" onclick="openEditModal(${item.id}, ${item.qty_invetory || 0})">✏️ Sửa</button>
+                </td>
             `;
             tableBody.appendChild(row);
         });
@@ -126,10 +137,12 @@
     // Hàm lọc và sắp xếp dữ liệu
     function filterData() {
         const searchKeyword = document.getElementById('skuSearch').value.toLowerCase().trim();
+        const searchParentPo = document.getElementById('parentPoSearch').value.toLowerCase().trim();
 
-        // Lọc theo SKU
-        let filtered = allData.filter(item => 
-            (item.sku_inventory || '').toLowerCase().includes(searchKeyword)
+        // Lọc theo SKU và Parent PO
+        let filtered = allData.filter(item =>
+            (item.sku_inventory || '').toLowerCase().includes(searchKeyword) &&
+            (item.parent_po_invent || '').toString().toLowerCase().includes(searchParentPo)
         );
 
         // Sắp xếp theo date_rcv tăng dần (ASC)
@@ -176,7 +189,7 @@
             const standardizedData = jsonData.map(row => ({
                 parent_po_invent: row['user_defined_07'],
                 sku_inventory: row['sku'],
-                qty_invetory: parseInt(row['onhand_carton']) || 0,
+                qty_invetory: parseInt(row['available_ctn'] ?? row['onhand_carton'] ?? row['allocated_ctn'] ?? 0) || 0,
                 date_rcv: row['receive_date'] // Giữ nguyên chuỗi ngày từ Excel
             }));
 
@@ -185,8 +198,87 @@
         reader.readAsArrayBuffer(file);
     }
 
+    // --- CHỨC NĂNG EDIT ---
+    function openEditModal(id, currentQty) {
+        document.getElementById('editId').value = id;
+        document.getElementById('originalQty').value = currentQty;
+        document.getElementById('dispCurrent').innerText = currentQty;
+        document.getElementById('editQty').value = '';
+        document.getElementById('dispRemaining').innerText = currentQty;
+        document.getElementById('editModal').style.display = 'flex';
+        document.getElementById('editQty').focus();
+    }
+    
+    function updateRemaining() {
+        const original = parseInt(document.getElementById('originalQty').value) || 0;
+        const used = parseInt(document.getElementById('editQty').value) || 0;
+        const remaining = original - used;
+        const el = document.getElementById('dispRemaining');
+        el.innerText = remaining;
+        el.style.color = remaining < 0 ? 'red' : '#007bff';
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+
+    let pendingData = null;
+
+    function saveInventory() {
+        const id = document.getElementById('editId').value;
+        const original = parseInt(document.getElementById('originalQty').value) || 0;
+        const used = parseInt(document.getElementById('editQty').value) || 0;
+        
+        if (used < 0) { alert('Số lượng sử dụng không được âm'); return; }
+        if (used > original) { alert('Không đủ tồn kho để sử dụng'); return; }
+
+        const finalQty = original - used;
+        
+        // Hiển thị modal xác nhận thay vì confirm()
+        document.getElementById('confOriginal').innerText = original;
+        document.getElementById('confUsed').innerText = used;
+        document.getElementById('confFinal').innerText = finalQty;
+        
+        pendingData = { id: id, qty: finalQty };
+        document.getElementById('confirmModal').style.display = 'flex';
+        document.getElementById('btnConfirmYes').focus();
+    }
+
+    async function executeUpdate() {
+        if (!pendingData) return;
+        try {
+            const res = await fetch('/api/inventory/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pendingData)
+            });
+            const json = await res.json();
+            if (res.ok) {
+                alert('Cập nhật thành công!');
+                closeConfirmModal();
+                closeEditModal();
+                // Reload data
+                fetch('/api/inventory').then(r => r.json()).then(d => { allData = d; filterData(); });
+            } else {
+                alert('Lỗi: ' + json.error);
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Lỗi kết nối server');
+        }
+    }
+
+    function closeConfirmModal() {
+        document.getElementById('confirmModal').style.display = 'none';
+        pendingData = null;
+    }
+
     async function uploadData(data) {
-        if (!confirm(`HÀNH ĐỘNG NÀY SẼ XÓA TOÀN BỘ DỮ LIỆU CŨ!\nBạn có chắc muốn import ${data.length} dòng mới?`)) return;
+        const isMerge = document.getElementById('chkMerge').checked;
+        const mode = isMerge ? 'merge' : 'replace';
+        const confirmMsg = isMerge ? `Bạn có chắc muốn GỘP THÊM ${data.length} dòng vào tồn kho hiện tại?` : `HÀNH ĐỘNG NÀY SẼ XÓA TOÀN BỘ DỮ LIỆU CŨ!\nBạn có chắc muốn import ${data.length} dòng mới?`;
+
+        if (!confirm(confirmMsg)) return;
 
         const modal = document.getElementById('progressModal');
         const pBar = document.getElementById('progressBar');
@@ -199,7 +291,7 @@
         try {
             // Gửi toàn bộ dữ liệu 1 lần (vì cần xóa bảng cũ trước)
             // Nếu dữ liệu quá lớn có thể cần chia nhỏ, nhưng với yêu cầu "xóa cũ" thì gửi 1 lần hoặc xử lý transaction trên server là an toàn nhất.
-            const response = await fetch('/api/inventory/import', {
+            const response = await fetch(`/api/inventory/import?mode=${mode}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -211,7 +303,7 @@
                 pBar.style.width = '100%';
                 pBar.style.backgroundColor = '#28a745';
                 pText.innerText = '✅ Cập nhật thành công!';
-                alert(`Hoàn tất!\nĐã xóa dữ liệu cũ và thêm mới ${result.inserted} dòng.`);
+                alert(`Hoàn tất!\nĐã thêm ${result.inserted} dòng vào hệ thống.`);
                 location.reload();
             } else {
                 throw new Error(result.error || 'Lỗi không xác định');
@@ -236,6 +328,52 @@
         <span id="progressText">0%</span>
         <div style="margin-top: 15px;">
             <button onclick="location.reload()" style="padding: 5px 15px; cursor:pointer;">Đóng</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Edit Inventory -->
+<div id="editModal" class="modal-overlay">
+    <div class="modal-content" style="width: 300px;">
+        <h3>Xuất kho / Sử dụng</h3>
+        <input type="hidden" id="editId">
+        <input type="hidden" id="originalQty">
+        
+        <div style="margin: 10px 0; text-align:left;">Tồn hiện tại: <strong id="dispCurrent">0</strong></div>
+
+        <div style="margin: 15px 0; text-align:left;">
+            <label>Số lượng sử dụng:</label>
+            <input type="number" id="editQty" placeholder="Nhập số carton dùng..." style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;" oninput="updateRemaining()">
+        </div>
+        
+        <div style="margin: 10px 0; text-align:left;">Còn lại: <strong id="dispRemaining" style="color:#007bff">0</strong></div>
+
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button class="btn-import" onclick="saveInventory()">Xác nhận xuất</button>
+            <button onclick="closeEditModal()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Hủy</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Confirm UI -->
+<div id="confirmModal" class="modal-overlay" style="z-index: 1100;">
+    <div class="modal-content" style="width: 350px; border-top: 5px solid #007bff;">
+        <h3 style="margin-top:0; color: #333;">⚠️ Xác nhận Xuất kho</h3>
+        <div style="text-align: left; background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; border: 1px solid #ddd;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span>📦 Tồn hiện tại:</span> <strong id="confOriginal" style="font-size:1.1em">0</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; color:#dc3545;">
+                <span>➖ Sử dụng:</span> <strong id="confUsed" style="font-size:1.1em">0</strong>
+            </div>
+            <div style="border-top:1px dashed #bbb; margin:8px 0;"></div>
+            <div style="display:flex; justify-content:space-between; color:#28a745; font-size:1.2em;">
+                <span>✅ Tồn sau xuất:</span> <strong id="confFinal">0</strong>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+            <button id="btnConfirmYes" class="btn-import" onclick="executeUpdate()">Đồng ý</button>
+            <button onclick="closeConfirmModal()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Hủy</button>
         </div>
     </div>
 </div>

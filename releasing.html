@@ -52,6 +52,11 @@
         .res-error { color: #dc3545; font-weight: bold; }
         .btn-close { margin-top: 15px; padding: 8px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
         .btn-close:hover { background-color: #5a6268; }
+        .btn-edit { background-color: #ffc107; color: #333; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .btn-edit:hover { background-color: #e0a800; }
+        .btn-delete { background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; margin-left: 5px; }
+        .btn-delete:hover { background-color: #c82333; }
+        .btn-secondary { background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -64,6 +69,7 @@
         <a href="/bbr.html">📈 BBR Report</a>
         <a href="/inventory.html">🏭 Inventory</a>
         <a href="/check.html">✅ Check Data</a>
+        <a href="/pallet.html">🧊 Pallet 3D</a>
     </div>
 
     <h1>Quản lý Xuất Kho (Releasing)</h1>
@@ -77,6 +83,13 @@
     <div class="search-container">
         <input type="text" id="skuSearch" class="search-input" placeholder="🔍 Tìm kiếm theo SKU..." oninput="applyFilters()">
         <input type="text" id="releaseKeySearch" class="search-input" placeholder="🔑 Tìm theo Release Key..." style="margin-left:10px" oninput="applyFilters()">
+        <select id="checkedFilter" class="search-input" style="width: 150px; margin-left: 10px;" onchange="applyFilters()">
+            <option value="">Tất cả (Check)</option>
+            <option value="1">Đã Check</option>
+            <option value="0">Chưa Check</option>
+        </select>
+        <button onclick="resetChecks()" class="btn-import" style="margin-left: 10px; background-color: #6c757d;">🔄 Reset Check</button>
+        <button onclick="deleteUnchecked()" class="btn-import" style="margin-left: 10px; background-color: #dc3545;">🗑️ Xóa mục chưa check</button>
     </div>
 
     <div class="tabs">
@@ -93,8 +106,10 @@
                 <th class="sortable" onclick="toggleSort()">Ngày Release <span id="sortIcon">▼</span></th>
                 <th>SKU</th>
                 <th>Số lượng</th>
+                <th>Checked</th>
                 <th>Trạng thái</th>
                 <th>Lý do</th>
+                <th>Hành động</th>
             </tr>
         </thead>
         <tbody>
@@ -121,18 +136,25 @@
         tableBody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Chưa có dữ liệu cho trạng thái này</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center">Chưa có dữ liệu cho trạng thái này</td></tr>';
             return;
         }
 
         data.forEach(item => {
             const row = document.createElement('tr');
-            
+
             let statusBadge = '';
             if (item.status === 1) statusBadge = '<span class="status-badge status-new">Open</span>';
             else if (item.status === 3) statusBadge = '<span class="status-badge status-allocate">Allocate</span>';
             else if (item.status === 7) statusBadge = '<span class="status-badge status-close">Close</span>';
             else statusBadge = `<span class="status-badge status-other">${item.status}</span>`;
+
+            const isCheckedIcon = (item.is_checked == 1) ? '✅' : '⬜';
+
+            // Chỉ hiển thị nút xóa nếu is_checked = 0
+            const deleteButtonHtml = (item.is_checked == 0)
+                ? `<button class="btn-delete" onclick="deleteItem('${item.id}')">🗑️ Xóa</button>`
+                : '';
 
             row.innerHTML = `
                 <td>${item.id}</td>
@@ -140,8 +162,13 @@
                 <td>${formatDate(item.release_date)}</td>
                 <td><strong>${item.sku || ''}</strong></td>
                 <td>${item.release_qty || 0}</td>
+                <td style="text-align:center;">${isCheckedIcon}</td>
                 <td>${statusBadge}</td>
                 <td>${item.change_reason || ''}</td>
+                <td>
+                    <button class="btn-edit" onclick="openEditModal('${item.id}', '${item.status}')">✏️ Sửa</button>
+                    ${deleteButtonHtml}
+                </td>
             `;
             tableBody.appendChild(row);
         });
@@ -151,12 +178,15 @@
     function applyFilters() {
         const searchSku = document.getElementById('skuSearch').value.toLowerCase().trim();
         const searchReleaseKey = document.getElementById('releaseKeySearch').value.toLowerCase().trim();
+        const checkedFilter = document.getElementById('checkedFilter').value;
 
         const filteredData = allData.filter(item => {
             const matchStatus = item.status === currentStatus;
             const matchSku = (item.sku || '').toLowerCase().includes(searchSku);
             const matchKey = (item.release_key || '').toLowerCase().includes(searchReleaseKey);
-            return matchStatus && matchSku && matchKey;
+            // So sánh check (nếu checkedFilter rỗng thì lấy hết, ngược lại so sánh giá trị)
+            const matchChecked = checkedFilter === '' || String(item.is_checked || 0) == checkedFilter;
+            return matchStatus && matchSku && matchKey && matchChecked;
         });
 
         // Sắp xếp dữ liệu theo ngày
@@ -314,6 +344,114 @@
             pBar.style.backgroundColor = '#dc3545';
         }
     }
+
+    // --- HÀM XỬ LÝ SỬA STATUS ---
+    function openEditModal(id, status) {
+        document.getElementById('editId').value = id;
+        document.getElementById('editStatus').value = status;
+        document.getElementById('editModal').style.display = 'flex';
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+
+    function saveStatus() {
+        const id = document.getElementById('editId').value;
+        const status = document.getElementById('editStatus').value;
+        
+        fetch('/api/releasing/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id, status })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) alert(data.error);
+            else {
+                // Cập nhật dữ liệu local và vẽ lại bảng
+                const item = allData.find(d => d.id == id);
+                if (item) item.status = parseInt(status);
+                closeEditModal();
+                applyFilters(); 
+            }
+        })
+        .catch(err => alert('Lỗi: ' + err));
+    }
+
+    // --- HÀM XỬ LÝ XÓA ---
+    let pendingDeleteId = null;
+
+    function deleteItem(id) {
+        pendingDeleteId = id;
+        const item = allData.find(d => d.id == id);
+        document.getElementById('deleteConfirmText').innerHTML = `Bạn có chắc muốn xóa dòng có ID <strong>${id}</strong> (SKU: <strong>${item?.sku || 'N/A'}</strong>)?<br>Hành động này không thể hoàn tác.`;
+        document.getElementById('deleteConfirmModal').style.display = 'flex';
+    }
+
+    function closeDeleteConfirmModal() {
+        document.getElementById('deleteConfirmModal').style.display = 'none';
+        pendingDeleteId = null;
+    }
+
+    function executeDelete() {
+        if (!pendingDeleteId) return;
+
+        fetch('/api/releasing/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: pendingDeleteId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) alert('Lỗi: ' + data.error);
+            else {
+                allData = allData.filter(d => d.id != pendingDeleteId);
+                applyFilters(); // Vẽ lại bảng
+            }
+            closeDeleteConfirmModal();
+        })
+        .catch(err => { alert('Lỗi kết nối: ' + err); closeDeleteConfirmModal(); });
+    }
+
+    // --- HÀM XÓA CÁC MỤC CHƯA CHECK ---
+    function deleteUnchecked() {
+        if (!confirm('Bạn có chắc chắn muốn xóa TẤT CẢ các dòng có trạng thái "Chưa Check" (is_checked = 0) không? Hành động này không thể hoàn tác.')) return;
+        
+        fetch('/api/releasing/delete_unchecked', {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                alert('Lỗi: ' + data.error);
+            } else {
+                alert(`Đã xóa ${data.affected} dòng.`);
+                // Tải lại dữ liệu để làm mới bảng
+                location.reload();
+            }
+        })
+        .catch(err => alert('Lỗi kết nối: ' + err));
+    }
+
+
+    // --- HÀM RESET CHECK ---
+    function resetChecks() {
+        if (!confirm('Bạn có chắc muốn Reset toàn bộ cột "Checked" về 0 không?')) return;
+
+        fetch('/api/releasing/reset_check', {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) alert('Lỗi: ' + data.error);
+            else {
+                alert(`Đã reset ${data.affected} dòng.`);
+                location.reload(); // Tải lại trang để cập nhật dữ liệu mới nhất
+            }
+        })
+        .catch(err => alert('Lỗi kết nối: ' + err));
+    }
 </script>
 
 <!-- Modal Progress Bar -->
@@ -334,6 +472,38 @@
             <div style="text-align: center;">
                 <button class="btn-close" onclick="location.reload()">Đóng & Tải lại trang</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Edit Status -->
+<div id="editModal" class="modal-overlay">
+    <div class="modal-content" style="width: 300px;">
+        <h3>Cập nhật trạng thái</h3>
+        <input type="hidden" id="editId">
+        <div style="margin: 20px 0;">
+            <label>Trạng thái mới:</label>
+            <select id="editStatus" style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
+                <option value="1">Open</option>
+                <option value="3">Allocate</option>
+                <option value="7">Close</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button class="btn-import" onclick="saveStatus()">Lưu</button>
+            <button class="btn-close" style="margin-top:0" onclick="closeEditModal()">Hủy</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Delete Confirm -->
+<div id="deleteConfirmModal" class="modal-overlay">
+    <div class="modal-content" style="width: 400px; border-top: 5px solid #dc3545;">
+        <h3 style="margin-top:0; color: #dc3545;">Xác nhận Xóa</h3>
+        <p id="deleteConfirmText" style="line-height: 1.5;">Bạn có chắc chắn muốn xóa dòng này không?<br>Hành động này không thể hoàn tác.</p>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+            <button class="btn-secondary" style="margin-top:0" onclick="closeDeleteConfirmModal()">Hủy</button>
+            <button class="btn-delete" style="padding: 8px 15px;" onclick="executeDelete()">Đồng ý Xóa</button>
         </div>
     </div>
 </div>

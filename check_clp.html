@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check CLP - detail_pickinglist</title>
+    <style>
+        body { font-family: Arial, sans-serif; background:#f6f7fb; margin:20px; }
+        h1 { margin: 0 0 12px 0; }
+        .container { background:#fff; border-radius:8px; padding:16px 18px; box-shadow:0 2px 6px rgba(0,0,0,0.08); }
+        table { width:100%; border-collapse: collapse; margin-top:10px; font-size:14px; }
+        th, td { padding:8px 10px; border-bottom:1px solid #e5e7eb; text-align:left; }
+        th { background:#0d6efd; color:#fff; position:sticky; top:0; z-index:1; }
+        tr:hover { background:#f1f5ff; }
+        .nav a { margin-right:12px; text-decoration:none; color:#0d6efd; font-weight:bold; }
+        .tag { display:inline-block; padding:2px 6px; border-radius:4px; font-size:12px; background:#eef2ff; color:#4338ca; }
+        .status { font-weight:bold; }
+        .status.sel { color:#16a34a; }
+        .status.nosel { color:#dc2626; }
+        .due.red { background:#fee2e2; color:#b91c1c; }
+        .due.yellow { background:#fef3c7; color:#92400e; }
+        .due.green { background:#e0f2fe; color:#0ea5e9; }
+        .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        input, select { padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; }
+        #statusText { color:#666; }
+        .summary { margin-top:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; }
+        .summary h3 { margin:8px 0 6px 0; font-size:15px; }
+        .summary-flex { display:flex; gap:20px; flex-wrap:wrap; }
+        .mini { width:320px; max-width:100%; }
+        .mini table { margin-top:4px; }
+        .mini th, .mini td { padding:6px 8px; }
+        .totals { font-weight:bold; margin-bottom:6px; }
+        /* modal */
+        #splitModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); align-items:center; justify-content:center; z-index:1200; }
+        #splitCard { background:#fff; border-radius:10px; padding:16px 18px; width:320px; max-width:90vw; box-shadow:0 12px 30px rgba(0,0,0,0.2); }
+        #splitCard h3 { margin:0 0 10px 0; }
+        .modal-row { display:flex; justify-content:space-between; margin:6px 0; }
+        .modal-row label { color:#555; }
+        .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:12px; }
+        .btn { padding:6px 12px; border:none; border-radius:6px; cursor:pointer; }
+        .btn-primary { background:#0d6efd; color:#fff; }
+        .btn-ghost { background:#e5e7eb; color:#111; }
+        .btn-info { background:#17a2b8; color:#fff; padding:4px 8px; border:none; border-radius:4px; cursor:pointer; font-size:12px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="nav">
+        <a href="/">🏠 Trang chủ</a>
+        <a href="/allowcate.html">📋 Allocate</a>
+        <a href="/inventory.html">🏭 Inventory</a>
+        <a href="/pallet.html">🧊 Pallet 3D</a>
+    </div>
+    <div class="toolbar">
+        <h1>Check CLP (detail_pickinglist)</h1>
+        <label>Hub:
+            <select id="hubFilter" onchange="render()">
+                <option value="">Tất cả</option>
+            </select>
+        </label>
+        <label>FDC:
+            <select id="fdcFilter" onchange="render()">
+                <option value="">Tất cả</option>
+            </select>
+        </label>
+        <label>Is Selected:
+            <select id="selFilter" onchange="render()">
+                <option value="">Tất cả</option>
+                <option value="1">Selected</option>
+                <option value="0">Not selected</option>
+            </select>
+        </label>
+        <span id="statusText"></span>
+    </div>
+    <div class="toolbar" style="margin-top:6px;">
+        <button id="prevBtn" onclick="prevPage()">⬅️ Trước</button>
+        <button id="nextBtn" onclick="nextPage()">Tiếp ➡️</button>
+        <span id="pageInfo">Trang 1/1</span>
+        <span style="color:#555;">(50 dòng mỗi trang)</span>
+        <button style="margin-left:auto; background:#d97706; color:#fff; padding:6px 10px; border:none; border-radius:6px; cursor:pointer;" onclick="deleteUnselected()">🗑️ Xóa bỏ chọn</button>
+        <button style="background:#dc2626; color:#fff; padding:6px 10px; border:none; border-radius:6px; cursor:pointer;" onclick="clearAll()">Xóa hết data</button>
+        <button style="background:#059669; color:#fff; padding:6px 10px; border:none; border-radius:6px; cursor:pointer;" onclick="autoSelectFIFO()">⚡ Auto Select (FIFO)</button>
+        <button style="background:#2563eb; color:#fff; padding:6px 10px; border:none; border-radius:6px; cursor:pointer;" onclick="moveOutbound()">Chuyển Outbound</button>
+    </div>
+
+    <div class="summary">
+        <div class="totals" id="totalSummary">Đang chọn: 0 carton | 0.000 CBM</div>
+        <div class="summary-flex">
+            <div class="mini">
+                <h3>Chọn - Theo Hub DC</h3>
+                <table>
+                    <thead><tr><th>Hub DC</th><th>Carton</th><th>CBM</th></tr></thead>
+                    <tbody id="sumHub"><tr><td colspan="3" style="text-align:center;">-</td></tr></tbody>
+                </table>
+            </div>
+            <div class="mini">
+                <h3>Chọn - Theo FDC</h3>
+                <table>
+                    <thead><tr><th>FDC</th><th>Carton</th><th>CBM</th></tr></thead>
+                    <tbody id="sumFdc"><tr><td colspan="3" style="text-align:center;">-</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="totals" id="totalSummaryFilter" style="margin-top:10px;">Theo bộ lọc: 0 carton | 0.000 CBM</div>
+        <div class="summary-flex">
+            <div class="mini">
+                <h3>Lọc - Theo Hub DC</h3>
+                <table>
+                    <thead><tr><th>Hub DC</th><th>Carton</th><th>CBM</th></tr></thead>
+                    <tbody id="sumHubFilter"><tr><td colspan="3" style="text-align:center;">-</td></tr></tbody>
+                </table>
+            </div>
+            <div class="mini">
+                <h3>Lọc - Theo FDC</h3>
+                <table>
+                    <thead><tr><th>FDC</th><th>Carton</th><th>CBM</th></tr></thead>
+                    <tbody id="sumFdcFilter"><tr><td colspan="3" style="text-align:center;">-</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div style="overflow:auto; max-height:70vh;">
+        <table id="tbl">
+            <thead>
+                <tr>
+                    <th>Hub DC</th>
+                    <th>FDC</th>
+                    <th>Parent PO</th>
+                    <th>Child PO</th>
+                    <th>Release Key</th>
+                    <th>SKU</th>
+                    <th>Carton</th>
+                    <th>CBM/carton</th>
+                    <th>Total CBM</th>
+                    <th>Dài</th>
+                    <th>Rộng</th>
+                    <th>Cao</th>
+                    <th>Due Date</th>
+                    <th>Selected</th>
+                    <th>Chọn</th>
+                    <th>Check Tồn</th>
+                    <th>Tách carton</th>
+                    <th>Cập nhật</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="16" style="text-align:center">Đang tải...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal tách carton -->
+<div id="splitModal">
+  <div id="splitCard">
+    <h3>Tách carton</h3>
+    <div class="modal-row"><label>Carton ban đầu:</label><span id="split-origin-carton">0</span></div>
+    <div class="modal-row"><label>CBM ban đầu:</label><span id="split-origin-cbm">0</span></div>
+    <div class="modal-row"><label>CBM/Carton:</label><span id="split-cbm-per">0</span></div>
+    <div class="modal-row">
+        <label>Số carton tách:</label>
+        <input type="number" id="split-input" min="1" style="width:100px;" oninput="recalcSplit()" />
+    </div>
+    <div class="modal-row"><label>Carton đang tách:</label><span id="split-splitting-carton">0</span></div>
+    <div class="modal-row"><label>CBM đang tách:</label><span id="split-splitting-cbm">0</span></div>
+    <div class="modal-row"><label>Carton còn lại:</label><span id="split-remaining-carton">0</span></div>
+    <div class="modal-row"><label>CBM còn lại:</label><span id="split-remaining-cbm">0</span></div>
+    <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeSplit()">Hủy</button>
+        <button class="btn btn-primary" onclick="confirmSplit()">Tách</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Check Inventory -->
+<div id="invModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:1200;">
+    <div style="background:#fff; border-radius:8px; padding:20px; width:400px; max-width:90vw; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+        <h3 style="margin-top:0; border-bottom:1px solid #eee; padding-bottom:10px;">Kiểm tra Tồn Kho & Chọn</h3>
+        <div style="margin-bottom:8px;"><strong>Parent PO:</strong> <span id="inv-ppo"></span></div>
+        <div style="margin-bottom:15px;"><strong>SKU:</strong> <span id="inv-sku"></span></div>
+        
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+            <span>🏭 Tổng Tồn kho:</span>
+            <strong id="inv-total" style="color:#2563eb;">0</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+            <span>✅ Đang chọn (Selected):</span>
+            <strong id="inv-selected" style="color:#16a34a;">0</strong>
+        </div>
+        <div style="border-top:1px solid #ddd; margin:10px 0;"></div>
+        <div style="display:flex; justify-content:space-between; font-size:1.1em;">
+            <span>📦 Còn lại (Dự kiến):</span>
+            <strong id="inv-remain">0</strong>
+        </div>
+        <div style="text-align:right; margin-top:20px;">
+            <button class="btn btn-ghost" onclick="document.getElementById('invModal').style.display='none'">Đóng</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const state = { raw: [], inventory: [] };
+    const pageSize = 50;
+    let currentPage = 1;
+    let splitCounter = 0;
+    let splitCtx = null; // {idx, row, max, cbmPer}
+
+    async function load() {
+        const status = document.getElementById('statusText');
+        status.textContent = 'Đang tải...';
+        try {
+            const [resClp, resInv] = await Promise.all([
+                fetch('/api/check_clp'),
+                fetch('/api/inventory')
+            ]);
+            const dataClp = await resClp.json();
+            const dataInv = await resInv.json();
+            
+            state.raw = Array.isArray(dataClp) ? dataClp : [];
+            state.inventory = Array.isArray(dataInv) ? dataInv : [];
+
+            buildFilters();
+            render();
+            status.textContent = `Tải ${state.raw.length} dòng`;
+        } catch (err) {
+            console.error(err);
+            status.textContent = 'Lỗi tải dữ liệu';
+        }
+    }
+
+    function buildFilters() {
+        const hubs = new Set();
+        const fdcs = new Set();
+        state.raw.forEach(r => {
+            if (r.hubdc) hubs.add(r.hubdc);
+            if (r.fdc) fdcs.add(r.fdc);
+        });
+        const hubSel = document.getElementById('hubFilter');
+        const fdcSel = document.getElementById('fdcFilter');
+        [hubSel, fdcSel].forEach(sel => { while (sel.options.length > 1) sel.remove(1); });
+        hubs.forEach(h => hubSel.add(new Option(h, h)));
+        fdcs.forEach(f => fdcSel.add(new Option(f, f)));
+    }
+
+    function render() {
+        const tbody = document.querySelector('#tbl tbody');
+        if (!state.raw || state.raw.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="16" style="text-align:center">Không có dữ liệu</td></tr>';
+            return;
+        }
+        const hubF = document.getElementById('hubFilter').value;
+        const fdcF = document.getElementById('fdcFilter').value;
+        const selF = document.getElementById('selFilter').value;
+        const rows = state.raw.filter(r => 
+            (!hubF || r.hubdc === hubF) && 
+            (!fdcF || r.fdc === fdcF) &&
+            (!selF || String(r.is_selected ?? '') === selF)
+        );
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="16" style="text-align:center">Không có dòng phù hợp</td></tr>';
+            return;
+        }
+
+        // reset page if vượt số trang
+        const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+        if (currentPage > totalPages) currentPage = totalPages;
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+        const pageRows = rows.slice(start, end);
+        document.getElementById('pageInfo').textContent = `Trang ${currentPage}/${totalPages} (hiển thị ${pageRows.length}/${rows.length})`;
+        document.getElementById('prevBtn').disabled = currentPage <= 1;
+        document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+
+        // --- Pre-calc Inventory & Selection for warnings ---
+        const invMap = new Map();
+        if (state.inventory) {
+            state.inventory.forEach(i => {
+                invMap.set(`${i.parent_po_invent}__${i.sku_inventory}`, Number(i.qty_invetory) || 0);
+            });
+        }
+        const selMap = new Map();
+        state.raw.forEach(r => {
+            if (r.is_selected) {
+                const key = `${r.parentpo}__${r.sku}`;
+                selMap.set(key, (selMap.get(key) || 0) + (Number(r.carton_qty) || 0));
+            }
+        });
+
+        tbody.innerHTML = '';
+        pageRows.forEach(r => {
+            const tr = document.createElement('tr');
+            const dueInfo = calcDue(r.due_date);
+
+            // Check Inventory Status inline
+            const key = `${r.parentpo}__${r.sku}`;
+            const totalInv = invMap.get(key) || 0;
+            const totalSel = selMap.get(key) || 0;
+            const remaining = totalInv - totalSel;
+            
+            let checkHtml = `<button class="btn-info" onclick="checkInventory('${r.parentpo}', '${r.sku}')">🔍 Check</button>`;
+            if (remaining < 0) {
+                checkHtml += `<div style="color:#dc2626; font-weight:bold; font-size:11px; margin-top:4px;">⚠️ Thiếu: ${remaining}</div>`;
+                tr.style.backgroundColor = '#fff0f0'; // Cảnh báo đỏ nhạt cả dòng
+            }
+
+            tr.innerHTML = `
+                <td>${r.hubdc || ''}</td>
+                <td>${r.fdc || ''}</td>
+                <td>${r.parentpo || ''}</td>
+                <td>${r.childpo || ''}</td>
+                <td>${r.release_key || ''}</td>
+                <td>${r.sku || ''}</td>
+                <td>${r.carton_qty ?? 0}</td>
+                <td>${num(r.cbm_per_carton,4)}</td>
+                <td>${num(r.total_cbm,4)}</td>
+                <td>${num(r.length_cm,2)}</td>
+                <td>${num(r.width_cm,2)}</td>
+                <td>${num(r.height_cm,2)}</td>
+                <td class="${dueInfo.className}">${dueInfo.label}</td>
+                <td class="status ${r.is_selected ? 'sel' : 'nosel'}">${r.is_selected ? 'Yes' : 'No'}</td>
+                <td style="text-align:center;"><input type="checkbox" ${r.is_selected ? 'checked' : ''} onchange="toggleSelect('${r.id}', this.checked)" /></td>
+                <td style="text-align:center;">${checkHtml}</td>
+                <td style="text-align:center;"><button onclick="openSplit('${r.id}')">Tách</button></td>
+                <td>${fmtDateTime(r.updated_at)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        renderSummary(rows);
+    }
+
+    function checkInventory(ppo, sku) {
+        if (!ppo || !sku) { alert('Thiếu ParentPO hoặc SKU'); return; }
+        
+        // 1. Tìm tồn kho tổng trong bảng Inventory
+        // Lưu ý: Inventory API trả về parent_po_invent và sku_inventory
+        const invItem = state.inventory.find(i => i.parent_po_invent == ppo && i.sku_inventory == sku);
+        const totalInv = invItem ? (Number(invItem.qty_invetory) || 0) : 0;
+
+        // 2. Tính tổng số lượng ĐÃ CHỌN (is_selected = 1) của ParentPO + SKU này trong bảng Picking List
+        // Lọc toàn bộ bảng (state.raw) chứ không chỉ trang hiện tại
+        const selectedSum = state.raw
+            .filter(r => r.is_selected && r.parentpo == ppo && r.sku == sku)
+            .reduce((sum, r) => sum + (Number(r.carton_qty) || 0), 0);
+
+        const remaining = totalInv - selectedSum;
+
+        // 3. Hiển thị Popup
+        document.getElementById('inv-ppo').innerText = ppo;
+        document.getElementById('inv-sku').innerText = sku;
+        document.getElementById('inv-total').innerText = totalInv;
+        document.getElementById('inv-selected').innerText = selectedSum;
+        
+        const elRemain = document.getElementById('inv-remain');
+        elRemain.innerText = remaining;
+        elRemain.style.color = remaining < 0 ? '#dc2626' : '#2563eb';
+
+        document.getElementById('invModal').style.display = 'flex';
+    }
+
+    async function autoSelectFIFO() {
+        if (!confirm('Hành động này sẽ TỰ ĐỘNG CHỌN các dòng dựa trên Tồn Kho và Due Date (ưu tiên số nhỏ trước).\nCác lựa chọn thủ công hiện tại sẽ bị ghi đè.\nBạn có chắc chắn không?')) return;
+
+        const status = document.getElementById('statusText');
+        status.textContent = 'Đang tính toán Auto Select...';
+
+        // 1. Tạo bản đồ Tồn kho (Clone để trừ dần)
+        const invMap = new Map();
+        state.inventory.forEach(i => {
+            const key = `${i.parent_po_invent}__${i.sku_inventory}`;
+            invMap.set(key, Number(i.qty_invetory) || 0);
+        });
+
+        // 2. Sắp xếp danh sách Picking List theo Due Date tăng dần (FIFO)
+        // Tạo bản sao để sort, sau đó map lại
+        const sortedRows = [...state.raw].sort((a, b) => {
+            const dueA = parseFloat(a.due_date) || 999999;
+            const dueB = parseFloat(b.due_date) || 999999;
+            return dueA - dueB; // Nhỏ trước lớn sau
+        });
+
+        const updates = [];
+        let totalSelected = 0;
+        let totalCarton = 0;
+        
+        // 3. Duyệt và chọn
+        sortedRows.forEach(row => {
+            const key = `${row.parentpo}__${row.sku}`;
+            const available = invMap.get(key) || 0;
+            const required = Number(row.carton_qty) || 0;
+
+            let newSelected = 0;
+            if (available >= required && required > 0) {
+                newSelected = 1;
+                invMap.set(key, available - required); // Trừ tồn kho tạm thời
+                totalSelected++;
+                totalCarton += required;
+            } else {
+                newSelected = 0; // Không đủ hàng thì không chọn (hoặc đã hết hàng cho line này)
+            }
+
+            // Chỉ update nếu trạng thái thay đổi
+            if ((row.is_selected ? 1 : 0) !== newSelected) {
+                row.is_selected = newSelected; // Update local state
+                updates.push({ id: row.id, is_selected: newSelected });
+            }
+        });
+
+        if (updates.length === 0) {
+            status.textContent = 'Không có thay đổi nào.';
+            alert(`Dữ liệu đã được tối ưu (không có thay đổi).\nTổng đang chọn: ${totalSelected} dòng (${totalCarton} carton).`);
+            return;
+        }
+
+        // 4. Gửi cập nhật hàng loạt lên server
+        try {
+            const resp = await fetch('/api/check_clp/update_bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+            const json = await resp.json();
+            if (!resp.ok) throw new Error(json.error || 'Lỗi cập nhật');
+            
+            const msg = `✅ Auto Select hoàn tất!\n\n📦 Tổng kết quả:\n- Số dòng được chọn: ${totalSelected}\n- Tổng carton: ${totalCarton}\n\n📝 Đã cập nhật thay đổi cho ${updates.length} dòng.`;
+            status.textContent = `Auto Select: ${totalSelected} dòng, ${totalCarton} carton.`;
+            alert(msg);
+            render(); // Vẽ lại bảng
+        } catch (err) {
+            console.error('Auto Select Error:', err);
+            alert('Lỗi khi lưu Auto Select: ' + err.message);
+            status.textContent = 'Lỗi cập nhật.';
+        }
+    }
+
+    function fmtDate(d) {
+        if (!d) return '';
+        const dt = new Date(d);
+        return isNaN(dt) ? d : dt.toLocaleDateString('vi-VN');
+    }
+    function fmtDateTime(d) {
+        if (!d) return '';
+        const dt = new Date(d);
+        return isNaN(dt) ? d : dt.toLocaleString('vi-VN');
+    }
+    function fmtDue(d) {
+        if (d === null || d === undefined || d === '') return '';
+        const n = Number(d);
+        if (Number.isFinite(n)) return String(n); // hiển thị số ngày
+        return d;
+    }
+    function calcDue(d) {
+        if (d === null || d === undefined || d === '') return { label: '', className: '' };
+        const n = Number(d);
+        if (!Number.isFinite(n)) return { label: d, className: '' };
+        let className = 'due green';
+        if (n > 14) className = 'due red';
+        else if (n > 10) className = 'due yellow';
+        const label = String(n); // hiển thị số ngày
+        return { label, className };
+    }
+    function num(v, dec=2) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n.toFixed(dec) : '';
+    }
+
+    async function toggleSelect(id, checked) {
+        try {
+            const row = state.raw.find(r => String(r.id) === String(id));
+            if (!row) return;
+            row.is_selected = checked ? 1 : 0;
+            const numericId = Number(id);
+            if (Number.isFinite(numericId)) {
+                const resp = await fetch('/api/check_clp/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: numericId, is_selected: checked ? 1 : 0 })
+                });
+                const json = await resp.json();
+                if (!resp.ok) throw new Error(json.error || 'Cập nhật thất bại');
+            }
+            render();
+        } catch (err) {
+            console.error(err);
+            alert(err.message || 'Cập nhật lỗi');
+        }
+    }
+
+    function openSplit(id) {
+        const idx = state.raw.findIndex(r => String(r.id) === String(id));
+        if (idx === -1) return;
+        const row = state.raw[idx];
+        const max = Number(row.carton_qty) || 0;
+        const cbmPer = Number(row.cbm_per_carton) || 0;
+        if (max <= 1) { alert('Không thể tách vì carton <= 1'); return; }
+        splitCtx = { idx, row, max, cbmPer };
+        document.getElementById('split-origin-carton').textContent = max;
+        document.getElementById('split-origin-cbm').textContent = (cbmPer * max).toFixed(3);
+        document.getElementById('split-cbm-per').textContent = cbmPer.toFixed(4);
+        const defaultVal = Math.max(1, Math.floor(max / 2));
+        const input = document.getElementById('split-input');
+        input.value = defaultVal;
+        input.min = 1;
+        input.max = max - 1;
+        recalcSplit();
+        document.getElementById('splitModal').style.display = 'flex';
+    }
+
+    function recalcSplit() {
+        if (!splitCtx) return;
+        const input = document.getElementById('split-input');
+        let val = Number(input.value) || 0;
+        if (val < 1) val = 1;
+        if (val >= splitCtx.max) val = splitCtx.max - 1;
+        input.value = val;
+        const remain = splitCtx.max - val;
+        document.getElementById('split-splitting-carton').textContent = val;
+        document.getElementById('split-splitting-cbm').textContent = (splitCtx.cbmPer * val).toFixed(3);
+        document.getElementById('split-remaining-carton').textContent = remain;
+        document.getElementById('split-remaining-cbm').textContent = (splitCtx.cbmPer * remain).toFixed(3);
+    }
+
+    function closeSplit() {
+        document.getElementById('splitModal').style.display = 'none';
+        splitCtx = null;
+    }
+
+    function confirmSplit() {
+        if (!splitCtx) return;
+        const val = Number(document.getElementById('split-input').value) || 0;
+        if (val <= 0 || val >= splitCtx.max) { alert('Số carton tách phải >0 và < carton hiện tại'); return; }
+        const remain = splitCtx.max - val;
+        const { idx, row, cbmPer } = splitCtx;
+        (async () => {
+            try {
+                const resp = await fetch('/api/check_clp/split', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: row.id, split_carton: val, row })
+                });
+                const json = await resp.json();
+                if (!resp.ok) throw new Error(json.error || 'Tách thất bại');
+                // update local with server result
+                state.raw[idx] = { ...row, carton_qty: json.updated.carton_qty, total_cbm: json.updated.total_cbm };
+                const newRow = { ...row };
+                newRow.id = json.inserted.id;
+                newRow.carton_qty = json.inserted.carton_qty;
+                newRow.total_cbm = json.inserted.total_cbm;
+                newRow.updated_at = new Date().toISOString();
+                state.raw.splice(idx + 1, 0, newRow);
+                closeSplit();
+                render();
+            } catch (err) {
+                console.error(err);
+                alert(err.message || 'Tách lỗi');
+            }
+        })();
+    }
+
+    function renderSummary(filteredRows) {
+        const selected = state.raw.filter(r => r.is_selected);
+        let totalCarton = 0, totalCbm = 0;
+        const byHub = new Map();
+        const byFdc = new Map();
+        selected.forEach(r => {
+            const carton = Number(r.carton_qty) || 0;
+            const cbm = Number(r.total_cbm) || ((Number(r.cbm_per_carton)||0) * carton);
+            totalCarton += carton;
+            totalCbm += cbm;
+            if (r.hubdc) {
+                const cur = byHub.get(r.hubdc) || { carton:0, cbm:0 };
+                cur.carton += carton; cur.cbm += cbm; byHub.set(r.hubdc, cur);
+            }
+            if (r.fdc) {
+                const cur = byFdc.get(r.fdc) || { carton:0, cbm:0 };
+                cur.carton += carton; cur.cbm += cbm; byFdc.set(r.fdc, cur);
+            }
+        });
+        document.getElementById('totalSummary').textContent =
+            `Đang chọn: ${totalCarton} carton | ${totalCbm.toFixed(3)} CBM`;
+
+        const hubBody = document.getElementById('sumHub');
+        if (byHub.size === 0) hubBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">-</td></tr>';
+        else {
+            hubBody.innerHTML = '';
+            Array.from(byHub.entries()).sort().forEach(([hub, v]) => {
+                hubBody.insertAdjacentHTML('beforeend',
+                    `<tr><td>${hub}</td><td>${v.carton}</td><td>${v.cbm.toFixed(3)}</td></tr>`);
+            });
+        }
+        const fdcBody = document.getElementById('sumFdc');
+        if (byFdc.size === 0) fdcBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">-</td></tr>';
+        else {
+            fdcBody.innerHTML = '';
+            Array.from(byFdc.entries()).sort().forEach(([fdc, v]) => {
+                fdcBody.insertAdjacentHTML('beforeend',
+                    `<tr><td>${fdc}</td><td>${v.carton}</td><td>${v.cbm.toFixed(3)}</td></tr>`);
+            });
+        }
+
+        // theo bộ lọc hiện tại (không phụ thuộc chọn)
+        const filt = Array.isArray(filteredRows) ? filteredRows : [];
+        let tCartonF = 0, tCbmF = 0;
+        const byHubF = new Map();
+        const byFdcF = new Map();
+        filt.forEach(r => {
+            const carton = Number(r.carton_qty) || 0;
+            const cbm = Number(r.total_cbm) || ((Number(r.cbm_per_carton)||0) * carton);
+            tCartonF += carton; tCbmF += cbm;
+            if (r.hubdc) {
+                const cur = byHubF.get(r.hubdc) || { carton:0, cbm:0 };
+                cur.carton += carton; cur.cbm += cbm; byHubF.set(r.hubdc, cur);
+            }
+            if (r.fdc) {
+                const cur = byFdcF.get(r.fdc) || { carton:0, cbm:0 };
+                cur.carton += carton; cur.cbm += cbm; byFdcF.set(r.fdc, cur);
+            }
+        });
+        document.getElementById('totalSummaryFilter').textContent =
+            `Theo bộ lọc: ${tCartonF} carton | ${tCbmF.toFixed(3)} CBM`;
+        const hubBodyF = document.getElementById('sumHubFilter');
+        if (byHubF.size === 0) hubBodyF.innerHTML = '<tr><td colspan="3" style="text-align:center;">-</td></tr>';
+        else {
+            hubBodyF.innerHTML = '';
+            Array.from(byHubF.entries()).sort().forEach(([hub, v]) => {
+                hubBodyF.insertAdjacentHTML('beforeend',
+                    `<tr><td>${hub}</td><td>${v.carton}</td><td>${v.cbm.toFixed(3)}</td></tr>`);
+            });
+        }
+        const fdcBodyF = document.getElementById('sumFdcFilter');
+        if (byFdcF.size === 0) fdcBodyF.innerHTML = '<tr><td colspan="3" style="text-align:center;">-</td></tr>';
+        else {
+            fdcBodyF.innerHTML = '';
+            Array.from(byFdcF.entries()).sort().forEach(([fdc, v]) => {
+                fdcBodyF.insertAdjacentHTML('beforeend',
+                    `<tr><td>${fdc}</td><td>${v.carton}</td><td>${v.cbm.toFixed(3)}</td></tr>`);
+            });
+        }
+    }
+
+    function nextPage() { currentPage += 1; render(); }
+    function prevPage() { currentPage = Math.max(1, currentPage - 1); render(); }
+
+    async function clearAll() {
+        if (!confirm('Xóa hết detail_pickinglist?')) return;
+        try {
+            const resp = await fetch('/api/check_clp/clear', { method: 'POST' });
+            const json = await resp.json();
+            if (!resp.ok) throw new Error(json.details || json.error || 'Xóa thất bại');
+            state.raw = [];
+            render();
+            const statEl = document.getElementById('optStat');
+            if (statEl) statEl.textContent = '';
+            const palletsEl = document.getElementById('optPallets');
+            if (palletsEl) palletsEl.innerHTML = '';
+            alert('Đã xóa hết.');
+        } catch (err) {
+            console.error(err);
+            alert(err.message || 'Xóa lỗi');
+        }
+    }
+
+    async function deleteUnselected() {
+        if (!confirm('Bạn có chắc muốn xóa tất cả các dòng KHÔNG ĐƯỢC CHỌN (is_selected = 0)?\nHành động này sẽ dọn dẹp danh sách và không thể hoàn tác.')) return;
+        try {
+            const resp = await fetch('/api/check_clp/delete_unselected', { method: 'POST' });
+            const json = await resp.json();
+            if (!resp.ok) throw new Error(json.error || 'Xóa thất bại');
+            alert(`Đã xóa ${json.affected} dòng chưa chọn.`);
+            load(); // Tải lại dữ liệu
+        } catch (err) {
+            console.error(err);
+            alert(err.message || 'Lỗi khi xóa');
+        }
+    }
+
+    async function moveOutbound() {
+        const selected = state.raw.filter(r => r.is_selected);
+        if (selected.length === 0) { alert('Chưa chọn dòng nào (checkbox Selected).'); return; }
+        const jobno = prompt('Nhập JobNo:');
+        if (!jobno) return;
+        const ids = selected.map(r => r.id).filter(Boolean);
+        try {
+            const resp = await fetch('/api/check_clp/outbound', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids, jobno })
+            });
+            const json = await resp.json();
+            if (!resp.ok) throw new Error(json.error || 'Chuyển outbound thất bại');
+            state.raw = state.raw.filter(r => !ids.includes(r.id));
+            render();
+            alert(`Đã chuyển ${ids.length} dòng sang outbound (jobno: ${jobno}).`);
+        } catch (err) {
+            console.error(err);
+            alert(err.message || 'Lỗi chuyển outbound');
+        }
+    }
+
+    load();
+</script>
+</body>
+</html>
