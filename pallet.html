@@ -1,394 +1,1638 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <title>Demo xếp thùng lên pallet (3D)</title>
-  <style>
-    body { margin:0; font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; }
-    .layout { display:flex; height:100vh; }
-    .panel { width:320px; padding:16px 18px; background:#111827; box-shadow:inset -1px 0 0 #1f2937; overflow:auto; }
-    label { display:block; margin-top:10px; font-size:13px; color:#cbd5e1; }
-    input, select { width:100%; padding:6px 8px; margin-top:4px; border:1px solid #334155; border-radius:6px; background:#0b1222; color:#e2e8f0; }
-    button { margin-top:14px; width:100%; padding:10px; background:#10b981; color:#0b1222; border:none; border-radius:8px; font-weight:bold; cursor:pointer; }
-    button:hover { background:#34d399; }
-    .stat { margin-top:12px; font-size:13px; line-height:1.4; }
-    #canvasWrap { flex:1; position:relative; }
-    #threeCanvas { width:100%; height:100%; display:block; }
-    .chip { display:inline-block; padding:3px 6px; border-radius:6px; background:#1f2937; margin-right:6px; font-size:12px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Pallet Optimizer - Multi-SKU Suggestion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .card { background: white; padding: 1.5rem; border-radius: 1rem; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
+        #canvas-container { 
+            width: 100%; 
+            height: 850px; 
+            background: #1e293b; 
+            border-radius: 0.75rem; 
+            position: relative;
+            overflow: hidden;
+        }
+        input { width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.5rem; font-size: 0.875rem; }
+        label { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 0.25rem; display: block; }
+        .badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+        .instruction-overlay {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            z-index: 20;
+            background: rgba(255,255,255,0.95);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            pointer-events: none;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .btn-delete {
+            background-color: #ef4444;
+            color: white;
+            transition: all 0.2s;
+        }
+        .btn-delete:hover {
+            background-color: #dc2626;
+        }
+        .btn-delete:disabled {
+            background-color: #f87171;
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
 </head>
-<body>
-<div class="layout">
-  <div class="panel">
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-      <button onclick="history.back()" style="width:auto; padding:8px 10px; background:#e5e7eb; color:#0b1222; border:none; border-radius:8px; cursor:pointer;">← Quay về</button>
-      <h3 style="margin:0;">Mô phỏng pallet</h3>
+<body class="p-4 md:p-6">
+    <div class="max-w-[1600px] mx-auto">
+        <header class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">Pallet Optimizer Multi-SKU</h1>
+                <p class="text-slate-500 text-sm">Tính toán số lượng pallet tối ưu cho danh sách kiện hàng</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex bg-slate-200 p-1 rounded-lg">
+                    <button id="modeAuto" onclick="setBuildMode('auto')" class="px-4 py-1 rounded-md text-xs font-bold transition-all bg-white shadow-sm text-indigo-600">TỰ ĐỘNG</button>
+                    <button id="modeManual" onclick="setBuildMode('manual')" class="px-4 py-1 rounded-md text-xs font-bold transition-all text-slate-600">THỦ CÔNG</button>
+                </div>
+                <span class="badge bg-blue-100 text-blue-700 hidden md:block">Pro Version</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div class="lg:col-span-1 space-y-4">
+                <div class="card">
+                    <h2 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        Pallet (mm)
+                    </h2>
+                    <div class="mb-4">
+                        <label for="palletType">Loại Pallet tiêu chuẩn</label>
+                        <select id="palletType" onchange="selectPalletType()" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-sm font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 transition-all">
+                            <option value="custom">⚙️ Tùy chỉnh kích thước</option>
+                            <option value="pallet12" selected>📦 Loại 1.2 (1200 x 1000 x 2550)</option>
+                            <option value="pallet19">📦 Loại 1.9 (1900 x 1000 x 2550)</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div><label>Dài</label><input type="number" id="pL" value="1200" oninput="setCustomPallet()"></div>
+                        <div><label>Rộng</label><input type="number" id="pW" value="1000" oninput="setCustomPallet()"></div>
+                    </div>
+                    <div><label>Cao tối đa</label><input type="number" id="pH" value="2550" oninput="setCustomPallet()"></div>
+                </div>
+
+                <div id="job-card" class="card">
+                    <h2 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        Nhập từ Picking List
+                    </h2>
+                    <div class="flex gap-2">
+                        <input type="text" id="jobInput" placeholder="Mã Job (vd: Job2024...)" class="flex-1">
+                        <button onclick="fetchJobData()" class="bg-slate-800 text-white px-3 rounded-lg hover:bg-slate-700 transition font-bold text-xs">LẤY</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <svg id="listIcon" class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                        <span id="listTitle">Danh sách kiện hàng</span>
+                    </h2>
+                    <div id="items-list" class="space-y-3 mb-4 max-h-[350px] overflow-y-auto pr-2">
+                        <!-- Item Row Template -->
+                        <div class="item-row p-3 border border-slate-200 rounded-lg bg-slate-50 relative group">
+                            <div class="grid grid-cols-2 gap-2 mb-2">
+                                <div><label>SKU Name</label><input type="text" class="sku-name" placeholder="Nhập SKU..." list="sku-list" oninput="onSkuInput(this)"></div>
+                                <div><label>Số lượng (Tổng)</label><input type="number" class="sku-qty" value="0" oninput="calculatePallets()"></div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div><label>Dài (L)</label><input type="number" class="sku-l" value="400" oninput="calculatePallets()"></div>
+                                <div><label>Rộng (W)</label><input type="number" class="sku-w" value="300" oninput="calculatePallets()"></div>
+                                <div><label>Cao (H)</label><input type="number" class="sku-h" value="250" oninput="calculatePallets()"></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 mt-2">
+                                <div><label>Trọng lượng (kg)</label><input type="number" class="sku-weight" value="0" step="0.1" oninput="calculatePallets()"></div>
+                                <div class="flex flex-col justify-end"><span class="packed-info text-[10px] text-blue-600 font-bold italic">Chưa xếp: 0</span></div>
+                            </div>
+                            <div class="mt-2 flex items-center gap-2">
+                                <input type="checkbox" class="sku-rotate w-4 h-4 cursor-pointer" onchange="calculatePallets()">
+                                <span class="text-[10px] font-bold text-slate-500 uppercase">Xoay 90° (W ↔ L)</span>
+                            </div>
+                            <div class="mt-1 flex items-center gap-2">
+                                <input type="checkbox" class="sku-stand w-4 h-4 cursor-pointer" onchange="calculatePallets()">
+                                <span class="text-[10px] font-bold text-slate-500 uppercase">Đặt đứng (H ↔ W)</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <button onclick="addItem()" class="w-full border-2 border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"></path></svg> Thêm kiện hàng
+                        </button>
+                        <button onclick="clearAll()" class="w-full bg-red-200 text-red-700 hover:bg-red-300 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 6h18M8 6v12m8-12v12M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14"></path></svg> Xóa hết SKU & Pallet
+                        </button>
+                        <button id="deleteBtn" onclick="deleteAndReorder()" disabled class="w-full bg-red-100 text-red-600 hover:bg-red-200 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Xóa thùng đang chọn
+                        </button>
+                        <button id="rotateBtn" onclick="rotateSelectedBox()" disabled class="w-full bg-amber-100 text-amber-700 hover:bg-amber-200 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6v12m6-6H6"></path></svg> Xoay 90° thùng (R)
+                        </button>
+                        <button id="swapWLBtn" onclick="swapWLSelectedBox()" disabled class="w-full bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 12h16M10 8l-4 4 4 4M14 8l4 4-4 4"></path></svg> Đổi W ↔ L (thùng)
+                        </button>
+                        <button id="standBtn" onclick="standSelectedBox()" disabled class="w-full bg-slate-200 text-slate-700 hover:bg-slate-300 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 4h4v16h-4zM6 8h2v8H6zM16 8h2v8h-2z"></path></svg> Đổi W ↔ H (thùng)
+                        </button>
+                        <button id="convertBtn" onclick="convertSelectedToManual()" disabled class="w-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-bold py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"></path></svg> Chuyển thành phần tử manual
+                        </button>
+                        <button id="calcBtn" onclick="calculatePallets()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition shadow-lg">
+                            🚀 Chạy thuật toán Tự động
+                        </button>
+                        <div id="selectedInfo" class="text-center text-[11px] text-slate-500 font-semibold">Chưa chọn thùng</div>
+                    </div>
+                </div>
+
+                <div class="card bg-slate-50 border border-slate-200">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase mb-4">Kết quả đề xuất</h3>
+                    <div id="stats-content" class="space-y-2">
+                        <div class="p-3 bg-white rounded border border-indigo-100 text-center">
+                            <p class="text-xs text-slate-400 uppercase">Tổng Pallet dự kiến</p>
+                            <p id="resPallets" class="text-3xl font-black text-indigo-600">0</p>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 text-center text-[11px]">
+                            <div class="p-2 bg-white rounded border border-slate-200">
+                                <p class="text-slate-400 uppercase">Số SKU</p>
+                                <p id="resSkuCount" class="text-xl font-bold text-slate-800">0</p>
+                            </div>
+                            <div class="p-2 bg-white rounded border border-slate-200">
+                                <p class="text-slate-400 uppercase">Đã xếp</p>
+                                <p id="resPacked" class="text-xl font-bold text-emerald-600">0</p>
+                            </div>
+                            <div class="p-2 bg-white rounded border border-slate-200">
+                                <p class="text-slate-400 uppercase">Còn lại</p>
+                                <p id="resRemain" class="text-xl font-bold text-amber-600">0</p>
+                            </div>
+                        </div>
+
+                        <div id="skuSummary" class="mt-3 hidden">
+                            <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">Số carton từng SKU</p>
+                            <div class="max-h-[160px] overflow-y-auto border border-slate-200 rounded">
+                                <table class="w-full text-[11px]">
+                                    <thead class="bg-slate-100 text-slate-600">
+                                        <tr>
+                                            <th class="px-2 py-1 text-left">SKU</th>
+                                            <th class="px-2 py-1 text-right">Tổng</th>
+                                            <th class="px-2 py-1 text-right text-emerald-700">Đã xếp</th>
+                                            <th class="px-2 py-1 text-right text-amber-700">Còn</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="skuSummaryBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div id="weight-info" class="p-2 bg-amber-50 rounded border border-amber-100 text-center mb-2">
+                            <p class="text-[10px] text-amber-600 uppercase font-bold">Trọng lượng Pallet hiện tại</p>
+                            <p><span id="currentPalletWeight" class="text-xl font-bold text-amber-700">0</span> <span class="text-xs text-amber-600">kg</span></p>
+                        </div>
+                        <div id="cbm-info" class="p-2 bg-cyan-50 rounded border border-cyan-100 text-center mb-2">
+                            <p class="text-[10px] text-cyan-700 uppercase font-bold">Thể tích Pallet hiện tại</p>
+                            <p><span id="currentPalletCbm" class="text-xl font-bold text-cyan-800">0.000</span> <span class="text-xs text-cyan-700">m³</span></p>
+                        </div>
+                        <div id="remainingCbmInfo" class="p-2 bg-blue-50 rounded border border-blue-100 text-center mb-2">
+                            <p class="text-[10px] text-blue-700 uppercase font-bold">Thể tích còn trống</p>
+                            <p><span id="remainingPalletCbm" class="text-xl font-bold text-blue-800">0.000</span> <span class="text-xs text-blue-700">m³</span></p>
+                        </div>
+
+                        <!-- Pallet Navigator -->
+                        <div id="pallet-nav" class="hidden space-y-3 mt-4 pt-4 border-t border-slate-200">
+                            <div class="flex items-center justify-between">
+                                <label class="m-0">Đang xem Pallet</label>
+                                <div class="flex flex-col items-end">
+                                    <div class="flex gap-1">
+                                        <button onclick="changePallet(-1)" class="p-1 bg-slate-200 rounded hover:bg-slate-300">◀</button>
+                                        <span id="currentPalletNum" class="font-bold text-indigo-600 px-2">1</span>
+                                        <button onclick="changePallet(1)" class="p-1 bg-slate-200 rounded hover:bg-slate-300">▶</button>
+                                    </div>
+                                    <span id="currentSkuName" class="text-[9px] font-bold text-slate-400 mt-1 uppercase text-right leading-tight"></span>
+                                </div>
+                            </div>
+                            <div id="manual-pallet-ops" class="hidden flex gap-2 mb-2">
+                                <button onclick="addNewPallet()" class="flex-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold py-1 rounded hover:bg-indigo-200">+ Pallet mới</button>
+                                <button onclick="deleteCurrentPallet()" class="flex-1 bg-red-50 text-red-600 text-[10px] font-bold py-1 rounded hover:bg-red-100">Xóa Pallet này</button>
+                            </div>
+                            <div id="manual-pack-mode" class="hidden space-y-1 mb-2">
+                                <label class="text-[10px] font-semibold text-slate-600">Chế độ đóng bên hông</label>
+                                <select id="sideMode" class="w-full p-1 text-[11px] border border-slate-300 rounded">
+                                    <option value="none">📦 Đóng bình thường</option>
+                                    <option value="edge-lh">Ép sát hông, giữ L×H</option>
+                                    <option value="edge-wh">Ép sát hông, xoay W↔L rồi ép</option>
+                                    <option value="edge-hlw">📐 Ép sát hông, xoay H×L×W</option>
+                                    <option value="gap-fill">📐 Lấp đầy khoảng trống (Toàn pallet)</option>
+                                </select>
+                            </div>
+                            <div id="manual-extra" class="hidden grid grid-cols-2 gap-2 text-[11px] items-center mb-2">
+                                <label class="text-left font-semibold text-slate-600 m-0">Tổng khối lượng (kg)</label>
+                                <input id="manualWeight" type="number" class="p-1 border border-slate-300 rounded" oninput="saveManualPalletData()" placeholder="Nhập kg">
+                                <label class="text-left font-semibold text-slate-600 m-0">FDC</label>
+                                <input id="manualFdc" type="text" class="p-1 border border-slate-300 rounded" oninput="saveManualPalletData()" placeholder="Nhập FDC">
+                            </div>
+                            <div class="bg-white p-2 rounded border border-slate-200">
+                                <label id="layerLabel">Hiển thị lớp: 10/10</label>
+                                <input type="range" id="layerSlider" min="1" max="10" value="10" oninput="updateLayerView()">
+                            </div>
+                            <div id="heightWarnBox" class="p-2 rounded text-[10px] font-bold flex justify-between items-center">
+                                <span>CHIỀU CAO: <span id="currentHeight">0</span>/<span id="heightLimit">0</span> mm</span>
+                                <span id="heightStatus">AN TOÀN</span>
+                            </div>
+                            <div id="footprintInfo" class="p-2 rounded text-[10px] font-bold flex justify-between items-center bg-blue-50 text-blue-700 border border-blue-200">
+                                <span>DƯ L: <span id="remainL">0</span> mm</span>
+                                <span>DƯ W: <span id="remainW">0</span> mm</span>
+                            </div>
+                            <div id="manualHeightBox" class="hidden grid grid-cols-2 gap-2 text-[11px] items-center">
+                                <label class="text-left font-semibold text-slate-600 m-0">Giới hạn cao (mm)</label>
+                                <input id="manualHeightLimit" type="number" class="p-1 border border-slate-300 rounded" oninput="renderCurrentPallet(true)" placeholder="mặc định pH">
+                            </div>
+                        </div>
+
+                        <!-- Manual mode SKU blocks -->
+                        <div id="manual-sku-blocks" class="hidden mt-4 space-y-2"></div>
+
+                        <div class="flex justify-between text-[11px] mt-4"><span>Tổng thùng:</span> <span id="resTotalBoxes" class="font-bold">0</span></div>
+                        <div class="flex justify-between text-[11px]"><span>Tổng thể tích:</span> <span id="resTotalCbm" class="font-bold">0 m³</span></div>
+                        <div class="mt-2 pt-2 border-t border-slate-200">
+                            <p class="text-[10px] text-slate-400 italic">* Lưu ý: Kết quả dựa trên phương pháp xếp chồng tối ưu cho từng loại SKU.</p>
+                        </div>
+
+                        <div class="mt-3 space-y-2">
+                            <button id="saveTemplateBtn" onclick="savePalletTemplate()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg text-sm flex items-center justify-center gap-2">
+                                💾 Lưu template Pallet-SKU (CSV)
+                            </button>
+                            <div id="templateContainer" class="hidden text-[11px] border border-slate-200 rounded p-2 bg-white max-h-[150px] overflow-y-auto">
+                                <p class="font-bold text-slate-600 mb-1">Template xem nhanh</p>
+                                <table class="w-full">
+                                    <thead class="bg-slate-100 text-slate-600">
+                                        <tr>
+                                            <th class="px-2 py-1 text-left">Pallet</th>
+                                            <th class="px-2 py-1 text-left">SKU</th>
+                                            <th class="px-2 py-1 text-right">Carton</th>
+                                            <th class="px-2 py-1 text-left">Loại Pallet</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="templateBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-3">
+                <div class="card p-0 relative overflow-hidden">
+                    <div id="canvas-container">
+                        <div class="instruction-overlay space-y-2">
+                            <p>🖱️ <b>Chuột trái:</b> Chọn thùng để xóa / Xoay camera</p>
+                            <p>⏩ <b>Phím R:</b> Xoay 90° thùng đang chọn</p>
+                            <p>⌨️ <b>Phím Del:</b> Xóa thùng & Tự động giảm số lượng</p>
+                            <p>✔️ <b>Đặt đứng:</b> Tick "Đặt đứng (H ↔ W)" ở danh sách SKU</p>
+                            <p> <i>Hệ thống hiển thị mô phỏng cách xếp của kiện hàng đầu tiên trong danh sách.</i></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <label>Loại pallet nhanh</label>
-    <select id="preset">
-      <option value="custom">Tự nhập</option>
-      <option value="1.2">Pallet 1.2 (120 x 100 x 250 cm)</option>
-      <option value="1.9">Pallet 1.9 (190 x 100 x 250 cm)</option>
-    </select>
+    <!-- Danh sách gợi ý SKU từ Master Data -->
+    <datalist id="sku-list"></datalist>
 
-    <label>Kích thước pallet (cm)</label>
-    <div style="display:flex; gap:6px;">
-      <input id="pL" type="number" placeholder="Dài" value="120">
-      <input id="pW" type="number" placeholder="Rộng" value="100">
-      <input id="pH" type="number" placeholder="Cao" value="250">
-    </div>
+    <script>
+        let scene, camera, renderer, palletGroup, boxesGroup;
+        let raycaster, mouse;
+        let selectedObject = null;
+        let isDragging = false;
+        let dragPlane = new THREE.Plane();
+        let dragOffset = new THREE.Vector3();
+        let intersectionPoint = new THREE.Vector3();
+        let allPallets = [];
+        let globalItems = []; // Lưu danh sách kiện hàng dùng cho Auto Mode
+        let currentPalletIdx = 0;
+        let masterData = []; // Lưu trữ Master Data để mapping
+        let isManualMode = false;
+        let boxStateMap = new Map(); // Lưu trạng thái (xoay) từng thùng
+        let selectedBoxKey = null;
+        let convertedAutoKeys = new Set(); // Các thùng auto đã chuyển sang manual (ẩn bản gốc)
+        const PALLET_FOOT_HEIGHT = 170; // chiều cao chân pallet cần trừ
 
-    <label>Thêm kích thước thùng (L x W x H, cm) & số lượng</label>
-    <div style="display:flex; gap:6px;">
-      <input id="bL" type="number" placeholder="L" value="40">
-      <input id="bW" type="number" placeholder="W" value="30">
-      <input id="bH" type="number" placeholder="H" value="25">
-    </div>
-    <label>Đặt thùng</label>
-    <select id="orient">
-      <option value="LWH">Đứng: L x W x H</option>
-      <option value="LHW">Nằm (lật H xuống W): L x H x W</option>
-      <option value="WLH">Nằm (lật L xuống W): W x L x H</option>
-    </select>
-    <label>Số lượng thùng</label>
-    <input id="bQty" type="number" value="100">
-    <button id="btnAddBox">Thêm dòng</button>
+        function getUsablePalletHeight() {
+            const pHGlobal = parseFloat(document.getElementById('pH').value) || 0;
+            const manualLimitVal = parseFloat(document.getElementById('manualHeightLimit')?.value);
+            const raw = (isManualMode && manualLimitVal > 0) ? manualLimitVal : pHGlobal;
+            return Math.max(0, raw - PALLET_FOOT_HEIGHT);
+        }
+        function applySideMode(drop) {
+            const mode = document.getElementById('sideMode')?.value || 'none';
+            if (mode === 'none') return drop;
+            const pL = parseFloat(document.getElementById('pL').value) || 0;
+            const pW = parseFloat(document.getElementById('pW').value) || 0;
+            // edge-lh: giữ nguyên L/W, edge-wh: hoán W↔L trước khi ép sát
+            if (mode === 'edge-wh') {
+                const tmp = drop.bW; drop.bW = drop.bL; drop.bL = tmp;
+            }
+            // ép sát cạnh phải (z dương), giữ x snap
+            drop.z = (pW / 2) - drop.bW / 2;
+            const snap = clampAndSnap(drop.x, drop.z);
+            drop.x = snap.snappedX;
+            drop.z = snap.snappedZ;
+            return drop;
+        }
 
-    <label style="margin-top:12px; display:flex; align-items:center; gap:6px;">
-      <input type="checkbox" id="chkTol" checked>
-      Cho phép dư 5% kích thước (tolerance)
-    </label>
-    <label style="margin-top:4px; display:flex; align-items:center; gap:6px;">
-      <input type="checkbox" id="chkOpt" checked>
-      Tự chọn hướng tối ưu (6 hướng)
-    </label>
+        let isRotatingCamera = false;
+        let prevMouseX = 0, prevMouseY = 0;
+        let rotX = 0.6, rotY = -0.6;
 
-    <div class="stat" id="boxList"></div>
+        async function init3D() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1e293b);
 
-    <button id="btnRebuild">Tính & Vẽ (xem theo dòng đầu tiên)</button>
-    <button id="btnOptimize" style="background:#3b82f6;">Tối ưu ghép chung (multi size)</button>
+            camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 1, 10000);
+            camera.position.set(1800, 1500, 1800);
+            camera.lookAt(0, 0, 0);
 
-    <div class="stat" id="stat"></div>
-    <div class="stat" id="optStat"></div>
-    <div id="optPallets" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px;"></div>
-  </div>
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
 
-  <div id="canvasWrap">
-    <canvas id="threeCanvas"></canvas>
-  </div>
-</div>
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
-    "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js"
-  }
-}
-</script>
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const light = new THREE.DirectionalLight(0xffffff, 0.5);
+            light.position.set(1000, 2000, 1000);
+            scene.add(light);
 
-<script type="module">
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+            palletGroup = new THREE.Group();
+            boxesGroup = new THREE.Group();
+            scene.add(palletGroup);
+            scene.add(boxesGroup);
 
-const canvas = document.getElementById('threeCanvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0b1222);
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-camera.position.set(3, 2.2, 3);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0,0.6,0);
-controls.update();
+            // Tải Master Data khi khởi tạo
+            try {
+                const res = await fetch('/api/masterdata');
+                masterData = await res.json();
+                // Cập nhật danh sách gợi ý cho datalist
+                const datalist = document.getElementById('sku-list');
+                if (datalist && Array.isArray(masterData)) {
+                    masterData.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.sku;
+                        datalist.appendChild(opt);
+                    });
+                }
+            } catch (e) { console.error("Lỗi tải Master Data:", e); }
 
-const light = new THREE.DirectionalLight(0xffffff, 1.0);
-light.position.set(3,4,2);
-scene.add(light);
-scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+            setupEvents(container);
+            updateSelectionUI();
+            animate();
+            calculatePallets();
+        }
 
-const grid = new THREE.GridHelper(10, 20, 0x3b82f6, 0x1e293b);
-grid.position.y = 0;
-scene.add(grid);
+        /**
+         * Chuyển đổi giữa chế độ Tự động và Thủ công
+         */
+        function setBuildMode(mode) {
+            isManualMode = (mode === 'manual');
+            
+            document.getElementById('modeAuto').className = `px-4 py-1 rounded-md text-xs font-bold transition-all ${!isManualMode ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600'}`;
+            document.getElementById('modeManual').className = `px-4 py-1 rounded-md text-xs font-bold transition-all ${isManualMode ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-600'}`;
+            
+            document.getElementById('job-card').style.display = isManualMode ? 'none' : 'block';
+            document.getElementById('manual-pallet-ops').classList.toggle('hidden', !isManualMode);
+            document.getElementById('manual-pack-mode').classList.toggle('hidden', !isManualMode);
+            document.getElementById('manual-extra').classList.toggle('hidden', !isManualMode);
+            document.getElementById('calcBtn').style.display = isManualMode ? 'none' : 'block';
+            document.getElementById('manual-sku-blocks').classList.toggle('hidden', !isManualMode);
+            document.getElementById('manualHeightBox').classList.toggle('hidden', !isManualMode);
+            document.getElementById('listTitle').innerText = isManualMode ? `Kiện hàng trên Pallet #${currentPalletIdx+1}` : "Danh sách kiện hàng";
+            
+            if (isManualMode) {
+                // Đảm bảo luôn có ít nhất 1 pallet để thao tác thủ công
+                if (allPallets.length === 0) {
+                    allPallets.push({ items: [], manualDrops: [], currentHeight: 0, usedInLastLayer: 0, lastDim: "", lastH: 0 });
+                    currentPalletIdx = 0;
+                }
+                document.getElementById('pallet-nav').classList.remove('hidden');
+                renderCurrentPallet();
+                updateSidebarFromCurrentPallet();
+                renderManualSkuBlocks();
+            } else {
+                calculatePallets();
+            }
+        }
 
-let palletMesh = null;
-let boxesGroup = new THREE.Group();
-scene.add(boxesGroup);
-let boxLines = [];
-let lastBins = [];
+        async function fetchJobData() {
+            const jobNo = document.getElementById('jobInput').value.trim();
+            if (!jobNo) return alert("Vui lòng nhập mã Job No");
+            
+            try {
+                const res = await fetch('/api/check_clp');
+                const data = await res.json();
+                // Lọc dữ liệu theo Job No
+                const items = data.filter(r => r.picking_no === jobNo);
+                
+                if (items.length === 0) return alert("Không tìm thấy dữ liệu cho Job No này");
+                
+                const list = document.getElementById('items-list');
+                list.innerHTML = ''; // Xóa danh sách cũ
+                
+                items.forEach(item => {
+                    addItem(item.sku_name || item.sku, item.carton_qty, (item.length_cm*10)||400, (item.width_cm*10)||300, (item.height_cm*10)||250);
+                });
+                calculatePallets();
+            } catch (e) {
+                console.error(e);
+                alert("Lỗi khi kết nối server");
+            }
+        }
 
-function resizeRenderer() {
-  const { clientWidth, clientHeight } = canvas.parentElement;
-  renderer.setSize(clientWidth, clientHeight, false);
-  camera.aspect = clientWidth / clientHeight;
-  camera.updateProjectionMatrix();
-}
-window.addEventListener('resize', resizeRenderer);
-resizeRenderer();
+        function addItem(name = "", qty = 0, l = 400, w = 300, h = 250, weight = 0) {
+            const list = document.getElementById('items-list');
+            const div = document.createElement('div');
+            div.className = 'item-row p-3 border border-slate-200 rounded-lg bg-slate-50 relative group';
+            div.innerHTML = `
+                <button onclick="this.parentElement.remove(); calculatePallets();" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hidden group-hover:block shadow-md z-10">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <div><label>SKU Name</label><input type="text" class="sku-name" value="${name}" list="sku-list" oninput="onSkuInput(this)"></div>
+                    <div><label>Số lượng</label><input type="number" class="sku-qty" value="${qty}" oninput="calculatePallets()"></div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div><label>Dài (L)</label><input type="number" class="sku-l" value="${l}" oninput="calculatePallets()"></div>
+                    <div><label>Rộng (W)</label><input type="number" class="sku-w" value="${w}" oninput="calculatePallets()"></div>
+                    <div><label>Cao (H)</label><input type="number" class="sku-h" value="${h}" oninput="calculatePallets()"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <div><label>Trọng lượng (kg)</label><input type="number" class="sku-weight" value="${weight}" step="0.1" oninput="calculatePallets()"></div>
+                    <div class="flex flex-col justify-end"><span class="packed-info text-[10px] text-blue-600 font-bold italic">Chưa xếp: ${qty}</span></div>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                    <input type="checkbox" class="sku-rotate w-4 h-4 cursor-pointer" onchange="calculatePallets()">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase">Xoay 90° (W ↔ L)</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2">
+                    <input type="checkbox" class="sku-stand w-4 h-4 cursor-pointer" onchange="calculatePallets()">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase">Đặt đứng (H ↔ W)</span>
+                </div>
+            `;
+            list.appendChild(div);
+        }
 
-function applyPreset() {
-  const val = document.getElementById('preset').value;
-  if (val === '1.2') { setPallet(120, 100, 250); }
-  else if (val === '1.9') { setPallet(190, 100, 250); }
-}
-function setPallet(L,W,H) {
-  document.getElementById('pL').value = L;
-  document.getElementById('pW').value = W;
-  document.getElementById('pH').value = H;
-}
+        // Hàm xử lý khi nhập SKU
+        function onSkuInput(input) {
+            const sku = input.value.trim();
+            const row = input.closest('.item-row');
+            const match = masterData.find(m => m.sku === sku);
+            if (match) {
+                // Tự động điền kích thước (Master Data thường lưu cm, nhân 10 để ra mm)
+                row.querySelector('.sku-l').value = (match.length * 10) || 0;
+                row.querySelector('.sku-w').value = (match.width * 10) || 0;
+                row.querySelector('.sku-h').value = (match.height * 10) || 0;
+                row.querySelector('.sku-weight').value = match.weight || 0;
+                calculatePallets();
+            }
+        }
 
-function orientDims(L,W,H, orient) {
-  if (orient === 'LHW') return [L,H,W];
-  if (orient === 'WLH') return [W,L,H];
-  if (orient === 'WHL') return [W,H,L];
-  if (orient === 'HLW') return [H,L,W];
-  if (orient === 'HWL') return [H,W,L];
-  return [L,W,H];
-}
+        function updateSelectionUI() {
+            const hasSelection = !!selectedObject;
+            document.getElementById('deleteBtn').disabled = !hasSelection;
+            document.getElementById('rotateBtn').disabled = !hasSelection;
+            document.getElementById('swapWLBtn').disabled = !hasSelection;
+            document.getElementById('standBtn').disabled = !hasSelection;
+            document.getElementById('convertBtn').disabled = !hasSelection;
+            document.getElementById('selectedInfo').innerText = hasSelection 
+                ? `Đang chọn: ${selectedObject.userData?.skuName || '1 thùng'}` 
+                : 'Chưa chọn thùng';
+        }
 
-function bestOrientation(L,W,H,pL,pW,pH,useTol,optimize) {
-  const orientations = optimize ? ['LWH','LHW','WLH','WHL','HLW','HWL'] : [document.getElementById('orient').value];
-  const tol = useTol ? 1.05 : 1;
-  let best = {cap:-1, orient: orientations[0], dims:[L,W,H], nL:0, nW:0, nH:0};
-  orientations.forEach(o=>{
-    let [l,w,h] = orientDims(L,W,H,o);
-    l*=tol; w*=tol; h*=tol;
-    const nL = Math.floor(pL / l);
-    const nW = Math.floor(pW / w);
-    const nH = Math.floor(pH / h);
-    const cap = Math.max(0, nL*nW*nH);
-    if (cap > best.cap) best = {cap, orient:o, dims:[l,w,h], nL, nW, nH};
-  });
-  return best;
-}
+        function clearSelection() {
+            if (selectedObject && selectedObject.userData?.originalColor) {
+                selectedObject.children[0].material.color.copy(selectedObject.userData.originalColor);
+            }
+            selectedObject = null;
+            selectedBoxKey = null;
+            updateSelectionUI();
+        }
 
-function rebuild() {
-  const pL = Number(document.getElementById('pL').value)||0;
-  const pW = Number(document.getElementById('pW').value)||0;
-  const pH = Number(document.getElementById('pH').value)||0;
-  let bL = Number(document.getElementById('bL').value)||0;
-  let bW = Number(document.getElementById('bW').value)||0;
-  let bH = Number(document.getElementById('bH').value)||0;
-  const useTol = document.getElementById('chkTol').checked;
-  const optimize = document.getElementById('chkOpt').checked;
-  const best = bestOrientation(bL,bW,bH,pL,pW,pH,useTol,optimize);
-  [bL,bW,bH] = best.dims;
-  const orient = best.orient;
+        function makeBoxKey(palletIdx, skuName, bL, bW, bH, currentY, boxIdx) {
+            return `${palletIdx}|${skuName}|${bL}x${bW}x${bH}|${currentY}|${boxIdx}`;
+        }
 
-  if (pL<=0||pW<=0||pH<=0||bL<=0||bW<=0||bH<=0) {
-    document.getElementById('stat').innerHTML = '⚠️ Nhập kích thước hợp lệ.';
-    return;
-  }
+        function rotateSelectedBox() {
+            if (!selectedObject) return;
+            const manualIdx = selectedObject.userData?.manualIdx;
+            if (manualIdx != null) {
+                // Với thùng manual: hoán đổi L/W và rơi xuống lại
+                const p = allPallets[currentPalletIdx];
+                if (!p || !p.manualDrops) return;
+                const drop = p.manualDrops.find(d => d._idx === manualIdx);
+                if (!drop) return;
+                const tmp = drop.bL;
+                drop.bL = drop.bW;
+                drop.bW = tmp;
+                drop.y = computeHeightAt(drop.x, drop.z, drop.bL, drop.bW, p, drop._idx);
+                renderCurrentPallet(true);
+                return;
+            }
 
-  // capacity
-  const nL = best.nL;
-  const nW = best.nW;
-  const nH = best.nH;
-  const total = Math.max(0, best.cap);
+            // Auto box: chỉ xoay hiển thị và lưu trạng thái
+            const key = selectedObject.userData?.boxKey;
+            selectedObject.rotation.y += Math.PI / 2;
+            const prevState = boxStateMap.get(key) || { rotY: 0 };
+            const newRot = (prevState.rotY + Math.PI / 2) % (Math.PI * 2);
+            boxStateMap.set(key, { rotY: newRot });
+        }
 
-  // draw pallet
-  if (palletMesh) scene.remove(palletMesh);
-  const palletGeom = new THREE.BoxGeometry(pL/100, 0.12, pW/100);
-  const palletMat = new THREE.MeshStandardMaterial({color:0xf59e0b, roughness:0.8});
-  palletMesh = new THREE.Mesh(palletGeom, palletMat);
-  palletMesh.position.set(0, 0.06, 0);
-  scene.add(palletMesh);
+        // Chuyển thùng auto thành manual để kéo/thả trong pallet
+        function convertSelectedToManual() {
+            if (!selectedObject) return alert("Chưa chọn thùng.");
+            const manualIdx = selectedObject.userData?.manualIdx;
+            if (manualIdx != null) return alert("Thùng đã là manual.");
+            
+            const key = selectedObject.userData?.boxKey;
+            if (!key) return;
+            convertedAutoKeys.add(key);
 
-  // draw sample boxes up to 150 boxes for performance
-  boxesGroup.clear();
-  const boxGeom = new THREE.BoxGeometry(bL/100, bH/100, bW/100);
-  const boxMat = new THREE.MeshStandardMaterial({color:0x38bdf8, opacity:0.85, transparent:true});
-  const maxDraw = Math.min(total, 150);
-  let drawn = 0;
-  for (let h=0; h<nH && drawn<maxDraw; h++) {
-    for (let w=0; w<nW && drawn<maxDraw; w++) {
-      for (let l=0; l<nL && drawn<maxDraw; l++) {
-        const m = new THREE.Mesh(boxGeom, boxMat);
-        const x = (-pL/2 + bL/2 + l*bL)/100;
-        const z = (-pW/2 + bW/2 + w*bW)/100;
-        const y = 0.06 + (bH/200) + h*(bH/100);
-        m.position.set(x, y, z);
-        boxesGroup.add(m);
-        drawn++;
-      }
-    }
-  }
+            const [palletIdxStr, skuName, dimStr] = key.split('|');
+            const dims = dimStr.split('x').map(Number);
+            const bL = dims[0], bW = dims[1], bH = dims[2];
+            const color = selectedObject.userData?.color || 0x14b8a6;
+            const weight = selectedObject.userData?.weight || 0;
 
-  document.getElementById('stat').innerHTML = `
-    <div class="chip">Pallet: ${pL} x ${pW} x ${pH} cm</div>
-    <div class="chip">Thùng (preview): ${bL.toFixed(1)} x ${bW.toFixed(1)} x ${bH.toFixed(1)} cm (${orient}${useTol?' +5% tol':''})</div>
-    <div class="chip">Số thùng tối đa: ${total}</div>
-    <div class="chip">LxW mỗi tầng: ${nL} x ${nW}</div>
-    <div class="chip">Tầng cao: ${nH}</div>
-  `;
-}
+            const p = allPallets[currentPalletIdx];
+            if (!p.manualDrops) p.manualDrops = [];
+            let newDrop = { skuName, bL, bW, bH, weight, color, x: selectedObject.position.x, z: selectedObject.position.z, y: 0, _idx: Date.now() + Math.random() };
+            newDrop = applySideMode(newDrop, p);
+            const yBase = computeHeightAt(newDrop.x, newDrop.z, newDrop.bL, newDrop.bW, p, null);
+            newDrop.y = yBase;
+            p.manualDrops.push(newDrop);
+            renderCurrentPallet(true);
+        }
 
-function addBoxLine() {
-  const L = Number(document.getElementById('bL').value)||0;
-  const W = Number(document.getElementById('bW').value)||0;
-  const H = Number(document.getElementById('bH').value)||0;
-  const qty = Math.max(0, Number(document.getElementById('bQty').value)||0);
-  const orient = document.getElementById('orient').value;
-  if (L<=0||W<=0||H<=0||qty<=0) { alert('Nhập kích thước và số lượng hợp lệ'); return; }
-  boxLines.push({ L,W,H,qty,orient });
-  renderBoxList();
-}
+        // Đổi W ↔ L cho thùng được chọn (ưu tiên manual, auto thì xoay 90°)
+        function swapWLSelectedBox() {
+            if (!selectedObject) return alert("Chưa chọn thùng.");
+            const manualIdx = selectedObject.userData?.manualIdx;
+            if (manualIdx != null) {
+                const p = allPallets[currentPalletIdx];
+                if (!p || !p.manualDrops) return;
+                const drop = p.manualDrops.find(d => d._idx === manualIdx);
+                if (!drop) return;
+                // hoán đổi W-L
+                const oldW = drop.bW;
+                drop.bW = drop.bL;
+                drop.bL = oldW;
 
-function renderBoxList() {
-  const wrap = document.getElementById('boxList');
-  if (!boxLines.length) { wrap.innerHTML = 'Chưa có dòng nào.'; return; }
-  wrap.innerHTML = boxLines.map((b,i)=>`
-    <div class="chip">#${i+1} - ${b.L}x${b.W}x${b.H} (${b.orient}) | Qty ${b.qty}
-      <button style="margin-left:6px; padding:2px 6px;" onclick="removeLine(${i})">x</button>
-    </div>
-  `).join('');
-}
+                const mode = document.getElementById('sideMode')?.value || 'none';
+                if (mode !== 'none') {
+                    applySideMode(drop, p);
+                } else {
+                    const snapPos = clampAndSnap(drop.x, drop.z);
+                    drop.x = snapPos.snappedX;
+                    drop.z = snapPos.snappedZ;
+                }
+                drop.y = computeHeightAt(drop.x, drop.z, drop.bL, drop.bW, p, drop._idx);
+                renderCurrentPallet(true);
+            } else {
+                // thùng auto: xoay 90° quanh trục Y
+                rotateSelectedBox();
+            }
+        }
 
-function removeLine(idx) {
-  boxLines.splice(idx,1);
-  renderBoxList();
-}
+        // Đổi W ↔ H cho thùng được chọn
+        function standSelectedBox() {
+            if (!selectedObject) return alert("Chưa chọn thùng.");
+            const manualIdx = selectedObject.userData?.manualIdx;
+            if (manualIdx != null) {
+                const p = allPallets[currentPalletIdx];
+                if (!p || !p.manualDrops) return;
+                const drop = p.manualDrops.find(d => d._idx === manualIdx);
+                if (!drop) return;
+                // hoán đổi W-H cho thùng manual
+                const oldW = drop.bW;
+                drop.bW = drop.bH;
+                drop.bH = oldW;
+                // clamp vào vùng pallet
+                const snapPos = clampAndSnap(drop.x, drop.z);
+                drop.x = snapPos.snappedX;
+                drop.z = snapPos.snappedZ;
+                // cập nhật lại vị trí Y theo chiều cao mới, tránh chèn lên nhau
+                drop.y = computeHeightAt(drop.x, drop.z, drop.bL, drop.bW, p, drop._idx);
+                renderCurrentPallet(true);
+            } else {
+                // Thùng auto: xoay 90° quanh trục X để đổi H với W (giữ trong render)
+                selectedObject.rotation.x += Math.PI / 2;
+            }
+        }
 
-function computeSummary() {
-  const pL = Number(document.getElementById('pL').value)||0;
-  const pW = Number(document.getElementById('pW').value)||0;
-  const pH = Number(document.getElementById('pH').value)||0;
-  const useTol = document.getElementById('chkTol').checked;
-  const optimize = document.getElementById('chkOpt').checked;
-  let html = '';
-  let totalPallets = 0;
-  boxLines.forEach((b, i) => {
-    const best = bestOrientation(b.L,b.W,b.H,pL,pW,pH,useTol,optimize ? true : false);
-    const cap = best.cap;
-    const pallets = cap>0 ? Math.ceil(b.qty / cap) : 'N/A';
-    if (Number.isFinite(pallets)) totalPallets += pallets;
-    html += `<div class="chip">#${i+1} (${best.orient}${useTol?'+5%':''}) cap/pallet: ${cap}, cần ${pallets} pallet cho ${b.qty} thùng</div>`;
-  });
-  if (boxLines.length) html += `<div class="chip">Tổng pallet (không gom chung kích thước): ${totalPallets}</div>`;
-  document.getElementById('stat').innerHTML = html || 'Chưa có dữ liệu.';
-}
+        function setupEvents(container) {
+            container.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            window.addEventListener('keydown', onKeyDown);
+            container.addEventListener('wheel', (e) => {
+                camera.position.multiplyScalar(e.deltaY > 0 ? 1.05 : 0.95);
+                e.preventDefault();
+            }, { passive: false });
+            // Disable default context menu
+            container.addEventListener('contextmenu', e => e.preventDefault());
+            // Drag & drop carton vào canvas (manual mode)
+            container.addEventListener('dragover', onCanvasDragOver);
+            container.addEventListener('drop', onCanvasDrop);
+        }
 
-function optimizeMixed() {
-  const pL = Number(document.getElementById('pL').value)||0;
-  const pW = Number(document.getElementById('pW').value)||0;
-  const pH = Number(document.getElementById('pH').value)||0;
-  if (pL<=0||pW<=0||pH<=0) { document.getElementById('optStat').innerHTML = 'Nhập pallet hợp lệ'; return; }
-  const palletVol = pL*pW*pH;
-  const useTol = document.getElementById('chkTol').checked;
-  const optimize = document.getElementById('chkOpt').checked;
-  const items = [];
-  boxLines.forEach((b,idx)=>{
-    const best = bestOrientation(b.L,b.W,b.H,pL,pW,pH,useTol,optimize ? true : false);
-    if (best.cap<=0) return; // không fit
-    const vol = (best.dims[0]*best.dims[1]*best.dims[2]);
-    for (let i=0;i<b.qty;i++) {
-      items.push({idx, vol, dims: best.dims, orient: best.orient});
-    }
-  });
-  if (!items.length) { document.getElementById('optStat').innerHTML = 'Không có thùng nào fit pallet'; return; }
-  // sort volume desc
-  items.sort((a,b)=>b.vol - a.vol);
-  const bins = [];
-  items.forEach(it=>{
-    let placed = false;
-    for (const bin of bins) {
-      if (bin.remain >= it.vol) {
-        bin.remain -= it.vol;
-        bin.counts[it.idx] = (bin.counts[it.idx]||0)+1;
-        bin.items.push(it);
-        placed=true; break;
-      }
-    }
-    if (!placed) {
-      bins.push({remain: palletVol - it.vol, counts: {[it.idx]:1}, items:[it]});
-    }
-  });
-  lastBins = bins;
-  const fillPerc = bins.map(b=> ((palletVol - b.remain)/palletVol)*100 );
-  const avgFill = (fillPerc.reduce((a,b)=>a+b,0)/bins.length).toFixed(1);
-  let html = `<div class="chip">Pallet cần: ${bins.length}</div><div class="chip">Fill trung bình: ${avgFill}%</div>`;
-  bins.forEach((b,i)=>{
-    const parts = Object.entries(b.counts).map(([idx,c])=>`#${Number(idx)+1}: ${c}`).join(', ');
-    html += `<div class="chip">Pallet ${i+1}: ${parts}</div>`;
-  });
-  document.getElementById('optStat').innerHTML = html;
+        function onMouseDown(event) {
+            updateMousePosition(event);
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(boxesGroup.children, true);
 
-  // render pallet cards with fill and CBM
-  const wrap = document.getElementById('optPallets');
-  wrap.innerHTML = '';
-  bins.forEach((b,i)=>{
-    const usedVol = palletVol - b.remain;
-    const cbm = (usedVol / 1_000_000).toFixed(3); // cm3 -> m3
-    const fill = Math.min(100, ((usedVol/palletVol)*100)).toFixed(1);
-    const bar = document.createElement('div');
-    bar.style.width = '150px';
-    bar.style.border = '1px solid #334155';
-    bar.style.borderRadius = '8px';
-    bar.style.background = '#0b1222';
-    bar.style.padding = '8px';
-    bar.innerHTML = `
-      <div style="font-weight:bold; margin-bottom:6px;">Pallet ${i+1}</div>
-      <div style="height:10px; background:#1f2937; border-radius:6px; overflow:hidden; margin-bottom:6px;">
-        <div style="width:${fill}%; height:100%; background:#10b981;"></div>
-      </div>
-      <div style="font-size:12px;">Fill: ${fill}%</div>
-      <div style="font-size:12px;">CBM: ${cbm}</div>
-      <div style="font-size:12px; color:#94a3b8;">${Object.entries(b.counts).map(([idx,c])=>`#${Number(idx)+1}:${c}`).join(', ')}</div>
-      <button style="margin-top:6px; width:100%; padding:6px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="showBin(${i})">Xem sắp xếp</button>
-    `;
-    wrap.appendChild(bar);
-  });
-}
+            if (intersects.length > 0) {
+                if (selectedObject) {
+                    selectedObject.children[0].material.color.copy(selectedObject.userData.originalColor);
+                }
 
-function showBin(idx) {
-  if (!lastBins[idx]) return;
-  const bin = lastBins[idx];
-  // simple shelf packing positions
-  const pL = Number(document.getElementById('pL').value)||0;
-  const pW = Number(document.getElementById('pW').value)||0;
-  const pH = Number(document.getElementById('pH').value)||0;
-  boxesGroup.clear();
-  let x=0, z=0, y=0, rowH=0;
-  for (const it of bin.items) {
-    const [l,w,h] = it.dims;
-    if (x + l > pL) { // new row
-      x = 0; z += rowH; rowH = 0;
-    }
-    if (z + w > pW) { // new layer
-      z = 0; x = 0; y += rowH;
-      rowH = 0;
-    }
-    if (y + h > pH) break; // out of height
-    rowH = Math.max(rowH, w);
-    const geom = new THREE.BoxGeometry(l/100, h/100, w/100);
-    const mat = new THREE.MeshStandardMaterial({color:0x38bdf8, opacity:0.9, transparent:true});
-    const mesh = new THREE.Mesh(geom, mat);
-    const posX = (-pL/2 + l/2 + x)/100;
-    const posZ = (-pW/2 + w/2 + z)/100;
-    const posY = 0.06 + (h/200) + y/100;
-    mesh.position.set(posX, posY, posZ);
-    boxesGroup.add(mesh);
-    x += l;
-  }
-  document.getElementById('stat').innerHTML = `<div class="chip">Đang xem pallet ${idx+1}</div>`;
-}
+                isDragging = true;
+                selectedObject = intersects[0].object.parent;
+                selectedBoxKey = selectedObject.userData?.boxKey || null;
+                selectedObject.userData.originalColor = selectedObject.children[0].material.color.clone();
+                selectedObject.children[0].material.color.set(0xffffff);
+                
+                updateSelectionUI();
 
-rebuild();
+                dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), selectedObject.position);
+                if (raycaster.ray.intersectPlane(dragPlane, intersectionPoint)) {
+                    dragOffset.copy(selectedObject.position).sub(intersectionPoint);
+                }
+            } else {
+                clearSelection();
+                isRotatingCamera = true;
+                prevMouseX = event.clientX;
+                prevMouseY = event.clientY;
+            }
+        }
 
-function animate() {
-  requestAnimationFrame(animate);
-  renderer.render(scene, camera);
-}
-animate();
+        function onKeyDown(event) {
+            if ((event.key === 'Delete' || event.key === 'Backspace') && selectedObject) {
+                deleteAndReorder();
+                event.preventDefault();
+            } else if ((event.key === 'r' || event.key === 'R') && selectedObject) {
+                rotateSelectedBox();
+            }
+        }
 
-// bind events
-document.getElementById('preset').addEventListener('change', () => { applyPreset(); rebuild(); });
-document.getElementById('btnRebuild').addEventListener('click', rebuild);
-document.getElementById('btnAddBox').addEventListener('click', () => { addBoxLine(); computeSummary(); });
-document.getElementById('btnOptimize').addEventListener('click', optimizeMixed);
+        function deleteAndReorder() {
+            if (!selectedObject) return;
+            
+            // Tìm SKU tương ứng của thùng hàng đang chọn và giảm số lượng đi 1
+            // Ở phiên bản hiện tại, chúng ta giảm số lượng của SKU đầu tiên để mô phỏng tính toán lại
+            const firstQtyInput = document.querySelector('.sku-qty');
+            if (firstQtyInput) {
+                const val = parseInt(firstQtyInput.value) || 0;
+                if (val > 0) firstQtyInput.value = val - 1;
+                calculatePallets();
+            }
 
-// expose for inline button
-window.showBin = showBin;
-</script>
+            clearSelection();
+        }
+
+        function changePallet(dir) {
+            currentPalletIdx += dir;
+            if (currentPalletIdx < 0) currentPalletIdx = allPallets.length - 1;
+            if (currentPalletIdx >= allPallets.length) currentPalletIdx = 0;
+            renderCurrentPallet();
+        }
+
+        // Lưu dữ liệu trọng lượng và FDC thủ công cho pallet hiện tại
+        function saveManualPalletData() {
+            if (!isManualMode || !allPallets[currentPalletIdx]) return;
+            const p = allPallets[currentPalletIdx];
+            p.manualWeight = parseFloat(document.getElementById('manualWeight').value) || 0;
+            p.manualFdc = document.getElementById('manualFdc').value;
+        }
+
+        function updateSidebarFromCurrentPallet() {
+            const p = allPallets[currentPalletIdx];
+            const list = document.getElementById('items-list');
+            list.innerHTML = '';
+            if (!p || !p.items) return;
+            
+            // Trong manual mode, items có thể bị phân mảnh do Gap Filling, gộp lại để hiển thị ở sidebar
+            const displayItems = [];
+            p.items.forEach(item => {
+                const exist = displayItems.find(d => d.skuName === item.skuName && d.bL === item.bL && d.bW === item.bW && d.bH === item.bH);
+                if (exist) exist.qty += item.qty;
+                else displayItems.push({...item});
+            });
+
+            displayItems.forEach(item => {
+                addItem(item.skuName, item.qty, item.bL, item.bW, item.bH);
+            });
+        }
+
+        function addNewPallet() {
+            allPallets.push({ items: [], currentHeight: 0, usedInLastLayer: 0, lastDim: "", lastH: 0 });
+            currentPalletIdx = allPallets.length - 1;
+            renderCurrentPallet();
+            updateSidebarFromCurrentPallet();
+        }
+
+        function deleteCurrentPallet() {
+            if (allPallets.length <= 1) return alert("Phải có ít nhất 1 Pallet");
+            if (!confirm("Xóa pallet này?")) return;
+            allPallets.splice(currentPalletIdx, 1);
+            currentPalletIdx = Math.max(0, currentPalletIdx - 1);
+            renderCurrentPallet();
+            updateSidebarFromCurrentPallet();
+        }
+
+        function clearAll() {
+            if (!confirm("Xóa hết toàn bộ SKU và Pallet?")) return;
+            document.getElementById('items-list').innerHTML = '';
+            allPallets = [];
+            currentPalletIdx = 0;
+            boxStateMap.clear();
+            selectedObject = null;
+            selectedBoxKey = null;
+            document.getElementById('resPallets').innerText = 0;
+            document.getElementById('resTotalBoxes').innerText = 0;
+            document.getElementById('resTotalCbm').innerText = '0 m³';
+            updateSummary(0, 0, 0);
+            document.getElementById('remainingPalletCbm').innerText = '0.000';
+            document.getElementById('remainingCbmInfo').className = "p-2 bg-blue-50 rounded border border-blue-100 text-center mb-2";
+
+            const hBox = document.getElementById('heightWarnBox');
+            const hStatus = document.getElementById('heightStatus');
+            document.getElementById('currentHeight').innerText = 0;
+            document.getElementById('heightLimit').innerText = getUsablePalletHeight();
+            hStatus.innerText = "AN TOÀN";
+            hBox.className = "p-2 rounded text-[10px] font-bold flex justify-between items-center bg-green-100 text-green-700 border border-green-300";
+            document.getElementById('remainL').innerText = (document.getElementById('pL').value * 1.05 || 0).toFixed(0);
+            document.getElementById('remainW').innerText = (document.getElementById('pW').value * 1.05 || 0).toFixed(0);
+            const tmplBody = document.getElementById('templateBody');
+            if (tmplBody) tmplBody.innerHTML = '';
+            document.getElementById('templateContainer')?.classList.add('hidden');
+            document.getElementById('pallet-nav').classList.add('hidden');
+            renderManualSkuBlocks();
+            renderCurrentPallet();
+        }
+
+        function updateLayerView() {
+            renderCurrentPallet(true);
+        }
+
+        function updateSummary(totalSku, packed, remain) {
+            document.getElementById('resSkuCount').innerText = totalSku || 0;
+            document.getElementById('resPacked').innerText = packed || 0;
+            document.getElementById('resRemain').innerText = remain || 0;
+        }
+
+        function renderSkuSummary(itemRows, packedMap) {
+            const body = document.getElementById('skuSummaryBody');
+            const wrap = document.getElementById('skuSummary');
+            if (!body || !wrap) return;
+
+            const rows = [];
+            itemRows.forEach(row => {
+                const name = row.querySelector('.sku-name').value || '(SKU)';
+                const total = parseInt(row.querySelector('.sku-qty').value) || 0;
+                const packed = packedMap ? (packedMap.get(row) || 0) : total; // thủ công: giả định đã xếp
+                const remain = total - packed;
+                rows.push({ name, total, packed, remain });
+            });
+
+            if (rows.length === 0) { wrap.classList.add('hidden'); return; }
+
+            body.innerHTML = rows.map(r => `
+                <tr class="border-b border-slate-100">
+                    <td class="px-2 py-1">${r.name}</td>
+                    <td class="px-2 py-1 text-right">${r.total}</td>
+                    <td class="px-2 py-1 text-right text-emerald-700">${r.packed}</td>
+                    <td class="px-2 py-1 text-right text-amber-700">${r.remain}</td>
+                </tr>
+            `).join('');
+            wrap.classList.remove('hidden');
+        }
+
+        function renderManualSkuBlocks() {
+            const container = document.getElementById('manual-sku-blocks');
+            if (!container || !isManualMode) return;
+            const rows = Array.from(document.querySelectorAll('.item-row'));
+            if (!rows.length) { container.innerHTML = '<div class="text-[11px] text-slate-500 italic">Chưa có SKU.</div>'; return; }
+
+            container.innerHTML = rows.map((row, idx) => {
+                const name = row.querySelector('.sku-name').value || `SKU #${idx+1}`;
+                const qty = parseInt(row.querySelector('.sku-qty').value) || 0;
+                const packedText = row.querySelector('.packed-info')?.innerText || '';
+                const l = row.querySelector('.sku-l').value;
+                const w = row.querySelector('.sku-w').value;
+                const h = row.querySelector('.sku-h').value;
+                return `
+                    <div class="p-2 border border-slate-200 rounded bg-white shadow-sm text-[11px] flex items-center justify-between gap-2 manual-sku-block" draggable="true" data-sku-idx="${idx}">
+                        <div class="flex-1">
+                            <div class="font-bold text-slate-700">${name}</div>
+                            <div class="text-slate-500">Qty: ${qty} | ${packedText}</div>
+                            <div class="text-slate-400">Kích thước: ${l} x ${w} x ${h} (mm)</div>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button class="px-2 py-1 bg-slate-200 rounded hover:bg-slate-300" onclick="adjustSkuQty(${idx}, -1)">-</button>
+                            <button class="px-2 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-600" onclick="adjustSkuQty(${idx}, 1)">+1</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Bind dragstart
+            container.querySelectorAll('.manual-sku-block').forEach(el => {
+                el.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', el.dataset.skuIdx);
+                });
+            });
+        }
+
+        function adjustSkuQty(idx, delta) {
+            const rows = document.querySelectorAll('.item-row');
+            const row = rows[idx];
+            if (!row) return;
+            const inp = row.querySelector('.sku-qty');
+            let val = parseInt(inp.value) || 0;
+            val = Math.max(0, val + delta);
+            inp.value = val;
+            calculatePallets();
+        }
+
+        function addManualDrop(idx, point) {
+            const rows = document.querySelectorAll('.item-row');
+            const row = rows[idx];
+            if (!row || !allPallets[currentPalletIdx]) return;
+            const skuName = row.querySelector('.sku-name').value || `SKU #${idx+1}`;
+            let bL = parseFloat(row.querySelector('.sku-l').value) || 0;
+            let bW = parseFloat(row.querySelector('.sku-w').value) || 0;
+            const bH = parseFloat(row.querySelector('.sku-h').value) || 0;
+            const weight = parseFloat(row.querySelector('.sku-weight').value) || 0;
+            if (!bL || !bW || !bH) return alert("Thiếu kích thước SKU.");
+            const colors = [0x6366f1, 0x10b981, 0xf59e0b, 0xef4444, 0xa855f7, 0xec4899, 0x06b6d4, 0x8b5cf6];
+            const color = colors[idx % colors.length];
+            if (!allPallets[currentPalletIdx].manualDrops) allPallets[currentPalletIdx].manualDrops = [];
+            let newDrop = { skuName, bL, bW, bH, origL: bL, origW: bW, origH: bH, weight, color, x: point.x, z: point.z, y: 0, _idx: Date.now() + Math.random() };
+            newDrop = applySideMode(newDrop, allPallets[currentPalletIdx]);
+            newDrop.y = computeHeightAt(newDrop.x, newDrop.z, newDrop.bL, newDrop.bW, allPallets[currentPalletIdx]);
+            allPallets[currentPalletIdx].manualDrops.push(newDrop);
+            renderCurrentPallet(true);
+        }
+
+        function buildTemplateRows() {
+            const rows = [];
+            const palletTypeLabel = (document.getElementById('palletType')?.selectedOptions?.[0]?.textContent || '').trim();
+            allPallets.forEach((pallet, idx) => {
+                const agg = new Map();
+                pallet.items.forEach(it => {
+                    agg.set(it.skuName, (agg.get(it.skuName) || 0) + it.qty);
+                });
+                agg.forEach((qty, sku) => rows.push({ pallet: idx + 1, sku, qty, palletType: palletTypeLabel }));
+            });
+            return rows;
+        }
+
+        function savePalletTemplate() {
+            const rows = buildTemplateRows();
+            if (!rows.length) return alert("Chưa có dữ liệu pallet để lưu.");
+
+            // Hiển thị bảng xem nhanh
+            const tmplBody = document.getElementById('templateBody');
+            const tmplWrap = document.getElementById('templateContainer');
+            if (tmplBody && tmplWrap) {
+                tmplBody.innerHTML = rows.map(r => `
+                    <tr class="border-b border-slate-100">
+                        <td class="px-2 py-1">${r.pallet}</td>
+                        <td class="px-2 py-1">${r.sku}</td>
+                        <td class="px-2 py-1 text-right">${r.qty}</td>
+                        <td class="px-2 py-1 text-left">${r.palletType}</td>
+                    </tr>
+                `).join('');
+                tmplWrap.classList.remove('hidden');
+            }
+
+            // Xuất CSV
+            const header = "Pallet,Sku,Carton,PalletType";
+            const csv = header + "\n" + rows.map(r => `${r.pallet},${r.sku},${r.qty},${r.palletType}`).join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "pallet_template.csv";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Giới hạn kéo/thả trong phạm vi pallet + 5% và snap lưới 20mm
+        function clampAndSnap(x, z) {
+            const pL = parseFloat(document.getElementById('pL').value) || 0;
+            const pW = parseFloat(document.getElementById('pW').value) || 0;
+            const allowL = pL * 1.05 / 2;
+            const allowW = pW * 1.05 / 2;
+            const snap = 20;
+            let clampedX = Math.max(-allowL, Math.min(allowL, x));
+            let clampedZ = Math.max(-allowW, Math.min(allowW, z));
+            clampedX = Math.round(clampedX / snap) * snap;
+            clampedZ = Math.round(clampedZ / snap) * snap;
+            return { snappedX: clampedX, snappedZ: clampedZ };
+        }
+
+        // Tính chiều cao hiện có tại vị trí (x,z) để thả thùng đứng trên đỉnh
+        function computeHeightAt(x, z, bL, bW, pallet, ignoreIdx = null) {
+            // TÃ­nh Ä‘á»™ cao tá»‘i Ä‘a táº¡i (x,z) dá»±a trÃªn cÃ¡c thÃ¹ng Ä‘Ã£ tháº£ (tuÃ¢n theo qty + startBoxIdx)
+            let maxH = 0;
+            const pushHeight = (footprint, top) => {
+                if (overlapFootprint(x, z, bL, bW, footprint)) maxH = Math.max(maxH, top);
+            };
+
+            const pL = parseFloat(document.getElementById('pL').value) || 0;
+            const pW = parseFloat(document.getElementById('pW').value) || 0;
+
+            // Boxes auto
+            pallet.items.forEach(item => {
+                const boxesPerLayer = item.pattern.boxes.length;
+                let drawn = 0;
+                let startIdx = item.startBoxIdx || 0;
+                const total = item.qty + startIdx;
+                const layers = Math.ceil(total / boxesPerLayer);
+
+                for (let l = 0; l < layers; l++) {
+                    const yBase = item.yBase + l * item.bH;
+                    const startB = (l === 0) ? startIdx : 0;
+                    for (let b = startB; b < boxesPerLayer; b++) {
+                        if (drawn >= item.qty) break;
+                        const boxPos = item.pattern.boxes[b];
+                        pushHeight(
+                            { x: boxPos.x - (pL/2), z: boxPos.y - (pW/2), w: boxPos.w, h: boxPos.h },
+                            yBase + item.bH
+                        );
+                        drawn++;
+                    }
+                }
+            });
+
+            // Boxes manual
+            if (pallet.manualDrops) {
+                pallet.manualDrops.forEach(drop => {
+                    if (ignoreIdx && drop._idx === ignoreIdx) return;
+                    pushHeight({ x: drop.x - drop.bL/2, z: drop.z - drop.bW/2, w: drop.bL, h: drop.bW }, (drop.y || 0) + drop.bH);
+                });
+            }
+            return maxH;
+        }
+
+        function overlapFootprint(cx, cz, w, d, fp) {
+            const aMinX = cx - w/2, aMaxX = cx + w/2;
+            const aMinZ = cz - d/2, aMaxZ = cz + d/2;
+            const bMinX = fp.x, bMaxX = fp.x + fp.w;
+            const bMinZ = fp.z, bMaxZ = fp.z + fp.h;
+            return (aMinX < bMaxX && aMaxX > bMinX && aMinZ < bMaxZ && aMaxZ > bMinZ);
+        }
+
+        function onMouseMove(event) {
+            updateMousePosition(event);
+            if (isDragging && selectedObject) {
+                raycaster.setFromCamera(mouse, camera);
+                if (raycaster.ray.intersectPlane(dragPlane, intersectionPoint)) {
+                    let newPos = intersectionPoint.add(dragOffset);
+                    const { snappedX, snappedZ } = clampAndSnap(newPos.x, newPos.z);
+                    selectedObject.position.x = snappedX;
+                    selectedObject.position.z = snappedZ;
+
+                    // Cargo-snap: nếu thùng manual, tính lại độ cao ngay khi kéo để luôn "dính" mặt lớp dưới
+                    const manualIdx = selectedObject.userData?.manualIdx;
+                    if (isManualMode && manualIdx != null) {
+                        const p = allPallets[currentPalletIdx];
+                        const drop = p?.manualDrops?.find(d => d._idx === manualIdx);
+                        if (drop) {
+                            drop.x = snappedX;
+                            drop.z = snappedZ;
+                            drop.y = computeHeightAt(snappedX, snappedZ, drop.bL, drop.bW, p, drop._idx);
+                            selectedObject.position.y = drop.y + drop.bH / 2;
+                        }
+                    }
+                }
+            } else if (isRotatingCamera) {
+                rotY += (event.clientX - prevMouseX) * 0.005;
+                rotX += (event.clientY - prevMouseY) * 0.005;
+                prevMouseX = event.clientX;
+                prevMouseY = event.clientY;
+            }
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            isRotatingCamera = false;
+
+            // Nếu kéo thả thùng manual, cập nhật vị trí + rơi xuống
+            if (selectedObject && isManualMode && selectedObject.userData.manualIdx != null) {
+                const p = allPallets[currentPalletIdx];
+                if (p && p.manualDrops) {
+                    const drop = p.manualDrops.find(d => d._idx === selectedObject.userData.manualIdx);
+                    if (drop) {
+                        const mode = document.getElementById('sideMode')?.value || 'none';
+                        if (mode !== 'none') {
+                            drop.x = selectedObject.position.x;
+                            drop.z = selectedObject.position.z;
+                            applySideMode(drop, p);
+                        } else {
+                            const snapPos = clampAndSnap(selectedObject.position.x, selectedObject.position.z);
+                            drop.x = snapPos.snappedX;
+                            drop.z = snapPos.snappedZ;
+                        }
+                        const yBase = computeHeightAt(drop.x, drop.z, drop.bL, drop.bW, p, drop._idx);
+                        drop.y = yBase;
+                        renderCurrentPallet(true);
+                    }
+                }
+            }
+        }
+
+        function onCanvasDragOver(event) {
+            if (!isManualMode) return;
+            event.preventDefault();
+        }
+
+        function onCanvasDrop(event) {
+            if (!isManualMode) return;
+            event.preventDefault();
+            const idx = parseInt(event.dataTransfer.getData('text/plain'));
+            if (isNaN(idx)) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            if (raycaster.ray.intersectPlane(ground, intersectionPoint)) {
+                addManualDrop(idx, intersectionPoint.clone());
+            }
+        }
+
+        function updateMousePosition(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            [palletGroup, boxesGroup].forEach(g => {
+                g.rotation.y = rotY;
+                g.rotation.x = rotX;
+            });
+            renderer.render(scene, camera);
+        }
+
+        function calculatePallets() {
+            // Nếu ở mode thủ công, chỉ cập nhật dữ liệu cho Pallet hiện tại dựa trên sidebar
+            if (isManualMode) {
+                updateCurrentPalletFromSidebar();
+                return;
+            }
+
+            const pL = parseFloat(document.getElementById('pL').value);
+            const pW = parseFloat(document.getElementById('pW').value);
+            const pH = getUsablePalletHeight();
+            
+            const itemRows = document.querySelectorAll('.item-row');
+            let totalBoxes = 0;
+            let totalVolume = 0;
+            const packedCountMap = new Map();
+            
+            // 1. Chuẩn bị dữ liệu tất cả SKU
+            let skus = Array.from(itemRows).map((row, idx) => {
+                const bL = parseFloat(row.querySelector('.sku-l').value) || 0;
+                const bW = parseFloat(row.querySelector('.sku-w').value) || 0;
+                const bH = parseFloat(row.querySelector('.sku-h').value) || 0;
+                const qty = parseInt(row.querySelector('.sku-qty').value) || 0;
+                const weight = parseFloat(row.querySelector('.sku-weight').value) || 0;
+                const volume = bL * bW * bH;
+                totalBoxes += qty;
+                totalVolume += (qty * volume) / 1000000000;
+                
+                packedCountMap.set(row, 0);
+                
+                return {
+                    row,
+                    skuName: row.querySelector('.sku-name').value || `SKU #${idx+1}`,
+                    qty,
+                    remaining: qty,
+                    bL, bW, bH,
+                    weight,
+                    volume,
+                    isRotated: row.querySelector('.sku-rotate').checked,
+                    isStanding: row.querySelector('.sku-stand').checked,
+                    color: [0x6366f1, 0x10b981, 0xf59e0b, 0xef4444, 0xa855f7, 0xec4899, 0x06b6d4, 0x8b5cf6][idx % 8]
+                };
+            });
+
+            allPallets = [];
+            
+            // 2. Thuật toán xếp theo từng Pallet
+            while (skus.some(s => s.remaining > 0)) {
+                let currentPallet = { items: [], manualDrops: [], currentHeight: 0, usedInLastLayer: 0, lastDim: "", lastH: 0 };
+                
+                // Giai đoạn 1: Xếp các SKU lớn/nặng trước (Primary Packing)
+                // Sắp xếp theo Trọng lượng (giảm dần) -> Thể tích (giảm dần)
+                let primarySkus = skus.filter(s => s.remaining > 0).sort((a, b) => (b.weight - a.weight) || (b.volume - a.volume));
+                
+                for (let sku of primarySkus) {
+                    if (sku.remaining <= 0) continue;
+                    packSkuIntoPallet(sku, currentPallet, pH, pL, pW);
+                }
+
+                // Giai đoạn 2: Gap Filling - Lấp đầy khoảng trống chiều cao bằng các SKU nhỏ nhất
+                // Sắp xếp theo Thể tích (tăng dần)
+                let smallestSkus = skus.filter(s => s.remaining > 0).sort((a, b) => a.volume - b.volume);
+                
+                for (let sku of smallestSkus) {
+                    if (sku.remaining <= 0) continue;
+                    packSkuIntoPallet(sku, currentPallet, pH, pL, pW);
+                }
+
+                if (currentPallet.items.length > 0 || currentPallet.manualDrops.length > 0) {
+                    if (currentPallet.usedInLastLayer > 0) currentPallet.currentHeight += currentPallet.lastH;
+                    allPallets.push(currentPallet);
+                } else {
+                    // Tránh vòng lặp vô tận nếu có SKU không thể xếp vào bất kỳ đâu
+                    break;
+                }
+            }
+
+            // Hàm trợ giúp xếp SKU vào pallet hiện tại
+            function packSkuIntoPallet(sku, currentPallet, pH, pL, pW) {
+                let bL = sku.bL, bW = sku.bW, bH = sku.bH;
+                if (sku.isStanding) { const temp = bH; bH = bW; bW = temp; } // Đặt đứng
+                if (sku.isRotated) { const temp = bL; bL = bW; bW = temp; } // Xoay 90
+                
+                const pattern = getPacking(pL, pW, bL, bW);
+                const boxesPerLayer = pattern.boxes.length;
+                const currentDim = `${bL}x${bW}x${bH}`;
+                if (boxesPerLayer <= 0) return;
+
+                while (sku.remaining > 0) {
+                    // Thử lấp vào lớp hiện tại nếu cùng kích thước
+                    if (currentPallet.usedInLastLayer > 0 && currentPallet.lastDim === currentDim) {
+                        const freeSlots = boxesPerLayer - currentPallet.usedInLastLayer;
+                        const take = Math.min(sku.remaining, freeSlots);
+                        
+                        currentPallet.items.push({
+                            skuName: sku.skuName, qty: take, bL, bW, bH, weight: sku.weight, color: sku.color, pattern,
+                            yBase: currentPallet.currentHeight,
+                            startBoxIdx: currentPallet.usedInLastLayer
+                        });
+                        
+                        sku.remaining -= take;
+                        packedCountMap.set(sku.row, (packedCountMap.get(sku.row) || 0) + take);
+                        currentPallet.usedInLastLayer += take;
+                        
+                        if (currentPallet.usedInLastLayer === boxesPerLayer) {
+                            currentPallet.currentHeight += bH;
+                            currentPallet.usedInLastLayer = 0;
+                        }
+                        if (sku.remaining <= 0) break;
+                    } else if (currentPallet.usedInLastLayer > 0) {
+                        // Kích thước khác, kiểm tra xem có thể bắt đầu lớp mới không
+                        if (currentPallet.currentHeight + currentPallet.lastH + bH > pH) break;
+                        currentPallet.currentHeight += currentPallet.lastH;
+                        currentPallet.usedInLastLayer = 0;
+                    }
+
+                    // Kiểm tra chiều cao còn lại
+                    const freeH = pH - currentPallet.currentHeight;
+                    if (freeH < bH) break; 
+
+                    // Xếp các lớp mới
+                    let layersPossible = Math.floor(freeH / bH);
+                    const totalPossible = layersPossible * boxesPerLayer;
+                    const take = Math.min(sku.remaining, totalPossible);
+                    
+                    if (take > 0) {
+                        const fullLayers = Math.floor(take / boxesPerLayer);
+                        const partialInLast = take % boxesPerLayer;
+
+                        if (fullLayers > 0) {
+                            currentPallet.items.push({
+                                skuName: sku.skuName, qty: fullLayers * boxesPerLayer, bL, bW, bH, weight: sku.weight, color: sku.color, pattern,
+                                yBase: currentPallet.currentHeight,
+                                startBoxIdx: 0
+                            });
+                            currentPallet.currentHeight += fullLayers * bH;
+                        }
+                        if (partialInLast > 0) {
+                            currentPallet.items.push({
+                                skuName: sku.skuName, qty: partialInLast, bL, bW, bH, weight: sku.weight, color: sku.color, pattern,
+                                yBase: currentPallet.currentHeight,
+                                startBoxIdx: 0
+                            });
+                            currentPallet.usedInLastLayer = partialInLast;
+                        }
+                        sku.remaining -= take;
+                        packedCountMap.set(sku.row, (packedCountMap.get(sku.row) || 0) + take);
+                    } else {
+                        break;
+                    }
+                    currentPallet.lastDim = currentDim;
+                    currentPallet.lastH = bH;
+                }
+            }
+
+            // Cập nhật giao diện
+            let totalPacked = 0;
+            skus.forEach(s => {
+                const packed = packedCountMap.get(s.row) || 0;
+                totalPacked += packed;
+                s.row.querySelector('.packed-info').innerText = `Đã xếp: ${packed} | Còn lại: ${s.qty - packed}`;
+            });
+
+            document.getElementById('resPallets').innerText = allPallets.length;
+            document.getElementById('resTotalBoxes').innerText = totalBoxes;
+            document.getElementById('resTotalCbm').innerText = totalVolume.toFixed(3) + ' m³';
+            updateSummary(itemRows.length, totalPacked, totalBoxes - totalPacked);
+            renderSkuSummary(itemRows, packedCountMap);
+            if (isManualMode) renderManualSkuBlocks();
+
+            if (allPallets.length > 0) {
+                document.getElementById('pallet-nav').classList.remove('hidden');
+                renderCurrentPallet();
+            } else {
+                document.getElementById('pallet-nav').classList.add('hidden');
+            }
+        }
+
+        function updateCurrentPalletFromSidebar() {
+            const pL = parseFloat(document.getElementById('pL').value);
+            const pW = parseFloat(document.getElementById('pW').value);
+            const pH = getUsablePalletHeight();
+            const skuColors = [0x6366f1, 0x10b981, 0xf59e0b, 0xef4444, 0xa855f7, 0xec4899, 0x06b6d4, 0x8b5cf6];
+            
+            const itemRows = document.querySelectorAll('.item-row');
+            let currentPallet = { items: [], manualDrops: (allPallets[currentPalletIdx]?.manualDrops || []), currentHeight: 0, usedInLastLayer: 0, lastDim: "", lastH: 0 };
+            let totalBoxes = 0;
+            let packedBoxes = 0;
+
+            itemRows.forEach((row, skuIdx) => {
+                let qty = parseInt(row.querySelector('.sku-qty').value) || 0;
+                let bL = parseFloat(row.querySelector('.sku-l').value) || 0;
+                let bW = parseFloat(row.querySelector('.sku-w').value) || 0;
+                let bH = parseFloat(row.querySelector('.sku-h').value) || 0;
+                const isRotated = row.querySelector('.sku-rotate').checked;
+                const isStanding = row.querySelector('.sku-stand').checked;
+                if (qty <= 0 || bL <= 0) return;
+                totalBoxes += qty;
+                if (isStanding) { const temp = bH; bH = bW; bW = temp; }
+                if (isRotated) { const temp = bL; bL = bW; bW = temp; }
+                
+                const pattern = getPacking(pL, pW, bL, bW);
+                const boxesPerLayer = pattern.boxes.length;
+                const currentDim = `${bL}x${bW}x${bH}`;
+
+                // Logic tính toán vị trí cho items trong pallet này (tương tự auto nhưng không chia pallet)
+                // Chế độ thủ công cho phép một pallet cao bao nhiêu tùy ý (sẽ có cảnh báo)
+                let remaining = qty;
+                while(remaining > 0) {
+                    if (currentPallet.usedInLastLayer > 0 && currentPallet.lastDim === currentDim) {
+                        const free = boxesPerLayer - currentPallet.usedInLastLayer;
+                        const take = Math.min(remaining, free);
+                        currentPallet.items.push({ skuName: row.querySelector('.sku-name').value, qty: take, bL, bW, bH, color: skuColors[skuIdx%8], pattern, yBase: currentPallet.currentHeight, startBoxIdx: currentPallet.usedInLastLayer });
+                        remaining -= take; currentPallet.usedInLastLayer += take;
+                        if (currentPallet.usedInLastLayer === boxesPerLayer) { currentPallet.currentHeight += bH; currentPallet.usedInLastLayer = 0; }
+                    } else {
+                        if (currentPallet.usedInLastLayer > 0) { currentPallet.currentHeight += currentPallet.lastH; currentPallet.usedInLastLayer = 0; }
+                        const fullLayers = Math.floor(remaining / boxesPerLayer);
+                        if (fullLayers > 0) {
+                            currentPallet.items.push({ skuName: row.querySelector('.sku-name').value, qty: fullLayers * boxesPerLayer, bL, bW, bH, color: skuColors[skuIdx%8], pattern, yBase: currentPallet.currentHeight, startBoxIdx: 0 });
+                            currentPallet.currentHeight += fullLayers * bH; remaining -= (fullLayers * boxesPerLayer);
+                        }
+                        if (remaining > 0) {
+                            currentPallet.items.push({ skuName: row.querySelector('.sku-name').value, qty: remaining, bL, bW, bH, color: skuColors[skuIdx%8], pattern, yBase: currentPallet.currentHeight, startBoxIdx: 0 });
+                            currentPallet.usedInLastLayer = remaining; remaining = 0;
+                        }
+                    }
+                    currentPallet.lastDim = currentDim; currentPallet.lastH = bH;
+                    packedBoxes += qty;
+                }
+            });
+            if (currentPallet.usedInLastLayer > 0) currentPallet.currentHeight += currentPallet.lastH;
+            
+            allPallets[currentPalletIdx] = currentPallet;
+            updateSummary(itemRows.length, packedBoxes, totalBoxes - packedBoxes);
+            renderSkuSummary(itemRows, null); // manual: giả định đã xếp hết
+            renderManualSkuBlocks();
+            renderCurrentPallet();
+        }
+
+        function renderCurrentPallet(preserveSlider = false) {
+            const pL = parseFloat(document.getElementById('pL').value);
+            const pW = parseFloat(document.getElementById('pW').value);
+            const pH = getUsablePalletHeight();
+            const p = allPallets[currentPalletIdx];
+            if (!p) return;
+            clearSelection();
+            if (isManualMode) document.getElementById('listTitle').innerText = `Kiện hàng trên Pallet #${currentPalletIdx+1}`;
+
+            // Xác định tất cả độ cao vật lý của các lớp trong pallet này
+            let layerHeights = new Set();
+            p.items.forEach(item => {
+                let layersNeeded = Math.ceil((item.qty + (item.startBoxIdx || 0)) / item.pattern.boxes.length);
+                for(let i=0; i < layersNeeded; i++) layerHeights.add(item.yBase + i * item.bH);
+            });
+            let sortedHeights = Array.from(layerHeights).sort((a,b) => a - b);
+            let totalLayersInPallet = sortedHeights.length;
+
+            // Cập nhật Slider
+            const slider = document.getElementById('layerSlider');
+            if (!preserveSlider) {
+                slider.max = totalLayersInPallet;
+                slider.value = totalLayersInPallet;
+            }
+            
+            const limitLayers = parseInt(slider.value);
+            document.getElementById('layerLabel').innerText = `Hiển thị lớp: ${limitLayers}/${totalLayersInPallet}`;
+            document.getElementById('currentPalletNum').innerText = `${currentPalletIdx + 1}/${allPallets.length}`;
+            document.getElementById('currentSkuName').innerText = [...new Set(p.items.map(i => i.skuName))].join(' + ');
+
+            // Load dữ liệu thủ công nếu có
+            if (isManualMode) {
+                document.getElementById('manualWeight').value = p.manualWeight || '';
+                document.getElementById('manualFdc').value = p.manualFdc || '';
+            }
+
+            // Xóa mô phỏng cũ
+            while(palletGroup.children.length > 0) palletGroup.remove(palletGroup.children[0]);
+            while(boxesGroup.children.length > 0) boxesGroup.remove(boxesGroup.children[0]);
+
+            // Vẽ Pallet base
+            const palletMesh = new THREE.Mesh(new THREE.BoxGeometry(pL, 60, pW), new THREE.MeshPhongMaterial({ color: 0x5d4037 }));
+            palletMesh.position.y = -30;
+            palletGroup.add(palletMesh);
+
+            let currentWeight = 0;
+            let currentVolume = 0;
+            const activeKeys = new Set();
+            let boxIdxCounter = 0;
+            const placedFootprints = [];
+            const includeFootprint = (minX, minZ, w, h, topH) => {
+                placedFootprints.push({ x: minX, z: minZ, w, h, top: topH });
+            };
+            const supportHeightAt = (minX, minZ, w, h) => {
+                let top = 0;
+                placedFootprints.forEach(fp => {
+                    const overlap = !(minX + w <= fp.x || minX >= fp.x + fp.w || minZ + h <= fp.z || minZ >= fp.z + fp.h);
+                    if (overlap) top = Math.max(top, fp.top);
+                });
+                return top;
+            };
+
+            // Di tu lop thap len cao de thung "roi" vao khoang trong cua lop duoi
+            [...p.items].sort((a,b) => (a.yBase || 0) - (b.yBase || 0)).forEach(item => {
+                currentWeight += (item.qty * (item.weight || 0));
+                currentVolume += (item.qty * item.bL * item.bW * item.bH) / 1_000_000_000;
+
+                let itemDrawn = 0;
+                let startIdx = item.startBoxIdx || 0;
+                let totalToPlace = item.qty + startIdx;
+                let itemLayers = Math.ceil(totalToPlace / item.pattern.boxes.length);
+                
+                for (let l = 0; l < itemLayers; l++) {
+                    const currentY = item.yBase + l * item.bH;
+                    if (sortedHeights.indexOf(currentY) >= limitLayers) continue;
+                    
+                    let startB = (l === 0) ? startIdx : 0;
+                    for (let b = startB; b < item.pattern.boxes.length; b++) {
+                        if (itemDrawn >= item.qty) break;
+                        
+                        const boxPos = item.pattern.boxes[b];
+                        const group = new THREE.Group();
+                        const geo = new THREE.BoxGeometry(boxPos.w - 4, item.bH - 4, boxPos.h - 4);
+                        
+                        const color = new THREE.Color(item.color);
+                        const physicalIdx = sortedHeights.indexOf(currentY);
+                        if (physicalIdx % 2 === 0) color.multiplyScalar(0.9);
+
+                        const mat = new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.9 });
+                        group.add(new THREE.Mesh(geo, mat));
+                        group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true })));
+
+                        const centerX = boxPos.x - pL/2 + boxPos.w/2;
+                        const centerZ = boxPos.y - pW/2 + boxPos.h/2;
+                        const minX = centerX - boxPos.w/2;
+                        const minZ = centerZ - boxPos.h/2;
+                        const supportY = supportHeightAt(minX, minZ, boxPos.w, boxPos.h);
+                        const finalY = supportY + item.bH / 2;
+                        group.position.set(centerX, finalY, centerZ);
+                        includeFootprint(minX, minZ, boxPos.w, boxPos.h, supportY + item.bH);
+                        
+                        const boxKey = makeBoxKey(currentPalletIdx, item.skuName, item.bL, item.bW, item.bH, currentY, boxIdxCounter++);
+                        if (convertedAutoKeys.has(boxKey)) { continue; } // ẩn các thùng đã chuyển sang manual
+                        group.userData.boxKey = boxKey;
+                        group.userData.skuName = item.skuName;
+                        group.userData.weight = item.weight || 0;
+                        group.userData.color = item.color;
+                        const savedState = boxStateMap.get(boxKey) || { rotY: 0 };
+                        group.rotation.y = savedState.rotY || 0;
+                        boxStateMap.set(boxKey, savedState);
+                        activeKeys.add(boxKey);
+
+                        boxesGroup.add(group);
+                        itemDrawn++;
+                    }
+                }
+            });
+
+            // Dọn trạng thái thùng không còn tồn tại
+            boxStateMap.forEach((_, key) => {
+                if (!activeKeys.has(key)) boxStateMap.delete(key);
+            });
+
+            // Vẽ các thùng thả tay (manualDrops)
+            if (p.manualDrops) {
+                p.manualDrops.forEach(drop => {
+                    const geo = new THREE.BoxGeometry(drop.bL - 4, drop.bH - 4, drop.bW - 4);
+                    const color = new THREE.Color(drop.color || 0x14b8a6);
+                    const mat = new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.9 });
+                    const group = new THREE.Group();
+                    group.add(new THREE.Mesh(geo, mat));
+                    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true })));
+                    group.position.set(drop.x, (drop.y || 0) + drop.bH / 2, drop.z);
+                    group.userData.manualIdx = drop._idx;
+                    boxesGroup.add(group);
+                    currentWeight += (drop.weight || 0);
+                    currentVolume += (drop.bL * drop.bW * drop.bH) / 1_000_000_000;
+                    includeFootprint(drop.x - drop.bL/2, drop.z - drop.bW/2, drop.bL, drop.bW, (drop.y || 0) + drop.bH);
+                });
+            }
+
+            // Tính phần dư chiều dài/rộng trong phạm vi cho phép (pallet + 5%)
+            const remainLLabel = document.getElementById('remainL');
+            const remainWLabel = document.getElementById('remainW');
+            const allowL = pL * 1.05;
+            const allowW = pW * 1.05;
+            if (placedFootprints.length === 0) {
+                remainLLabel.innerText = allowL.toFixed(0);
+                remainWLabel.innerText = allowW.toFixed(0);
+            } else {
+                let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+                placedFootprints.forEach(fp => {
+                    minX = Math.min(minX, fp.x);
+                    maxX = Math.max(maxX, fp.x + fp.w);
+                    minZ = Math.min(minZ, fp.z);
+                    maxZ = Math.max(maxZ, fp.z + fp.h);
+                });
+                const usedL = maxX - minX;
+                const usedW = maxZ - minZ;
+                const remainL = Math.max(0, allowL - usedL);
+                const remainW = Math.max(0, allowW - usedW);
+                remainLLabel.innerText = remainL.toFixed(0);
+                remainWLabel.innerText = remainW.toFixed(0);
+            }
+
+            // Hiển thị trọng lượng
+            const displayWeight = (isManualMode && p.manualWeight > 0) ? p.manualWeight : currentWeight;
+            document.getElementById('currentPalletWeight').innerText = displayWeight.toFixed(1);
+            // Hiển thị thể tích
+            document.getElementById('currentPalletCbm').innerText = currentVolume.toFixed(3);
+
+            // Tính toán và hiển thị thể tích còn trống
+            const totalPalletVolume = (pL * pW * pH) / 1_000_000_000;
+            const remainingCbm = totalPalletVolume - currentVolume;
+            const remainingEl = document.getElementById('remainingPalletCbm');
+            const remainingInfo = document.getElementById('remainingCbmInfo');
+            
+            remainingEl.innerText = remainingCbm.toFixed(3);
+            
+            // Cập nhật màu sắc trực quan dựa trên dung tích còn lại
+            if (remainingCbm < 0) {
+                remainingInfo.className = "p-2 bg-red-100 rounded border border-red-300 text-center mb-2 animate-pulse";
+                remainingEl.className = "text-xl font-bold text-red-700";
+            } else if (remainingCbm < totalPalletVolume * 0.15) { // Còn dưới 15% dung tích
+                remainingInfo.className = "p-2 bg-amber-50 rounded border border-amber-200 text-center mb-2";
+                remainingEl.className = "text-xl font-bold text-amber-700";
+            } else {
+                remainingInfo.className = "p-2 bg-blue-50 rounded border border-blue-200 text-center mb-2";
+                remainingEl.className = "text-xl font-bold text-blue-800";
+            }
+
+            // Kiểm tra chiều cao
+            const actualHeight = p.currentHeight;
+            const hText = document.getElementById('currentHeight');
+            const hLimit = document.getElementById('heightLimit');
+            const hStatus = document.getElementById('heightStatus');
+            const hBox = document.getElementById('heightWarnBox');
+            hText.innerText = actualHeight;
+            hLimit.innerText = pH;
+            
+            if (actualHeight > pH) {
+                hBox.className = "p-2 rounded text-[10px] font-bold flex justify-between items-center bg-red-100 text-red-700 animate-pulse border border-red-300";
+                hStatus.innerText = "⚠️ QUÁ CAO";
+            } else {
+                hBox.className = "p-2 rounded text-[10px] font-bold flex justify-between items-center bg-green-100 text-green-700 border border-green-300";
+                hStatus.innerText = "✅ AN TOÀN";
+            }
+        }
+
+        function getPacking(pL, pW, bL, bW) {
+            // Cho phép thò ra 5% mỗi chiều
+            const effL = pL * 1.05;
+            const effW = pW * 1.05;
+
+            const solve = (palletL, palletW, boxL, boxW) => {
+                let boxes = [];
+                let nx = Math.floor(palletL / boxL); // Số lượng theo chiều dài
+                let ny = Math.floor(palletW / boxW); // Số lượng theo chiều rộng
+
+                // 1. Khối chính (Main Block)
+                for (let i = 0; i < nx; i++) {
+                    for (let j = 0; j < ny; j++) {
+                        boxes.push({ x: i * boxL, y: j * boxW, w: boxL, h: boxW });
+                    }
+                }
+
+                // 2. Vùng trống bên phải (Right Filler Strip - xoay thùng 90 độ)
+                let remainX = palletL - (nx * boxL);
+                if (remainX >= boxW) {
+                    let fillNx = Math.floor(remainX / boxW);
+                    let fillNy = Math.floor(palletW / boxL);
+                    for (let i = 0; i < fillNx; i++) {
+                        for (let j = 0; j < fillNy; j++) {
+                            boxes.push({ x: nx * boxL + i * boxW, y: j * boxL, w: boxW, h: boxL });
+                        }
+                    }
+                }
+
+                // 3. Vùng trống phía trên (Top Filler Strip - chỉ tính phần còn lại trừ vùng bên phải)
+                let remainY = palletW - (ny * boxW);
+                if (remainY >= boxL) {
+                    let fillNx = Math.floor((nx * boxL) / boxW);
+                    let fillNy = Math.floor(remainY / boxL);
+                    for (let i = 0; i < fillNx; i++) {
+                        for (let j = 0; j < fillNy; j++) {
+                            boxes.push({ x: i * boxW, y: ny * boxW + j * boxL, w: boxW, h: boxL });
+                        }
+                    }
+                }
+                return { boxes, count: boxes.length };
+            };
+
+            // Chạy thử cả hai hướng và chọn phương án có số lượng lớn nhất
+            const res1 = solve(effL, effW, bL, bW);
+            const res2 = solve(effL, effW, bW, bL);
+            return res1.count >= res2.count ? res1 : res2;
+        }
+
+        function selectPalletType() {
+            const palletType = document.getElementById('palletType').value;
+            const pL = document.getElementById('pL');
+            const pW = document.getElementById('pW');
+            const pH = document.getElementById('pH');
+
+            if (palletType === 'pallet12') {
+                pL.value = 1200;
+                pW.value = 1000;
+                pH.value = 2550;
+            } else if (palletType === 'pallet19') {
+                pL.value = 1900;
+                pW.value = 1000;
+                pH.value = 2550;
+            }
+            calculatePallets();
+        }
+
+        function setCustomPallet() {
+            document.getElementById('palletType').value = 'custom';
+            calculatePallets();
+        }
+
+        window.onload = init3D;
+        window.onresize = () => {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        };
+    </script>
 </body>
 </html>

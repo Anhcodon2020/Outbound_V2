@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Picking List</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
         h1 { color: #333; text-align: center; }
@@ -103,6 +104,7 @@
                 <th>Child PO</th>
                 <th>Due Date (Days)</th>
                 <th style="text-align: right;">Số Lượng (Ctn)</th>
+                <th style="text-align: right; background-color: #fff3cd; color:#856404;">Tồn Kho (Ctn)</th>
                 <th style="text-align: right; background-color: #e8f5e9; color:#198754;">Đã Trừ</th>
                 <th style="text-align: right;">CBM</th>
                 <th>Chiều Dài</th>
@@ -174,6 +176,15 @@
             <button class="btn" style="background:#6c757d;" onclick="closeDeductModal()">Hủy</button>
             <button class="btn" style="background:#dc3545;" onclick="submitDeduct()">Xác nhận Trừ</button>
         </div>
+    </div>
+</div>
+
+<div id="stickySummary" style="position: fixed; bottom: 0; left: 0; width: 100%; background: #28a745; color: white; padding: 15px 20px; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); display: none; justify-content: space-between; align-items: center; z-index: 1000; font-size: 16px; box-sizing: border-box;">
+    <div><strong>✅ Phần Click (Đã chọn):</strong> <span id="stickyCount">0</span> dòng</div>
+    <div><strong>Tổng Carton:</strong> <span id="stickyQty" style="font-size:1.2em; font-weight:bold;">0</span></div>
+    <div><strong>Tổng CBM:</strong> <span id="stickyCbm" style="font-size:1.2em; font-weight:bold;">0.000</span> m³</div>
+    <div>
+        <button class="btn" style="background:#fff; color:#28a745; font-weight:bold;" onclick="window.scrollTo(0, 0);">⬆ Lên Đầu Trang</button>
     </div>
 </div>
 
@@ -315,6 +326,10 @@
             const matchDeduct = remark.match(/\[Trừ:\s*(\d+)\]/);
             const deductedQty = matchDeduct ? parseInt(matchDeduct[1]) : 0;
 
+            // Tính tồn kho hiện tại mapping theo ParentPO + SKU
+            const inventoryMatch = inventoryData.filter(inv => inv.parent_po_invent == item.parentpo && inv.sku_inventory == item.sku);
+            const invQty = inventoryMatch.reduce((sum, inv) => sum + (Number(inv.qty_invetory) || 0), 0);
+
             totalQty += qty;
             totalCbm += cbm;
 
@@ -345,19 +360,28 @@
 
             // Click vào dòng để chọn
             row.onclick = (e) => {
+                if (invQty <= 0 && !selectedIds.has(item.id)) {
+                    if (e.target.type !== 'checkbox') {
+                        Swal.fire('Thất bại', 'Mã hàng này hiện không có tồn kho để chọn!', 'error');
+                    }
+                    return;
+                }
                 if (e.target.type !== 'checkbox') toggleRow(item.id);
             };
             // Ưu tiên màu vàng cho dòng được chọn, nếu không thì tô màu theo Parent PO
             row.style.backgroundColor = isChecked ? '#fff3cd' : rowColor;
 
+            const disabledAttr = invQty <= 0 && !selectedIds.has(item.id) ? 'disabled' : '';
+
             row.innerHTML = `
-                <td style="text-align: center;"><input type="checkbox" ${isChecked} onchange="toggleRow(${item.id})"></td>
+                <td style="text-align: center;"><input type="checkbox" ${isChecked} ${disabledAttr} onchange="toggleRow(${item.id})"></td>
                 <td>${item.parentpo || ''}</td>
                 <td style="${rKeyStyle}">${item.release_key || ''}</td>
                 <td><strong>${item.sku || ''}</strong></td>
                 <td>${item.childpo || ''}</td>
                 <td style="text-align: center; font-weight: bold;">${item.due_date || ''}</td>
                 <td style="text-align: right; font-weight:bold;">${qty}</td>
+                <td style="text-align: right; font-weight:bold; color:#856404; background-color: ${invQty > 0 ? '#fff3cd' : 'inherit'};">${invQty}</td>
                 <td style="text-align: right; font-weight:bold; color:#198754;">${deductedQty > 0 ? deductedQty : '-'}</td>
                 <td style="text-align: right;">${cbm.toFixed(3)}</td>
                 <td>${item.length_cm || 0}</td>
@@ -412,8 +436,34 @@
         // Tìm các dòng inventory khớp
         const matches = inventoryData.filter(inv => inv.parent_po_invent == parentPo && inv.sku_inventory == sku && (Number(inv.qty_invetory) > 0));
 
-        // Nếu không có tồn kho hoặc user không muốn trừ -> cứ chọn bình thường
-        if (matches.length === 0 || !confirm(`SKU: ${sku}\nParentPO: ${parentPo}\n\nBạn có muốn TRỪ TỒN KHO cho dòng này không?`)) {
+        // Nếu không có tồn kho -> báo lỗi và KHÔNG cho chọn
+        if (matches.length === 0) {
+            Swal.fire({
+                title: 'Không thể chọn', 
+                text: 'Mã hàng này hiện không có tồn kho!',
+                icon: 'error',
+                confirmButtonText: 'Đóng'
+            });
+            renderTable();
+            return;
+        }
+
+        const askDeduct = await Swal.fire({
+            title: 'Trừ Tồn Kho?',
+            html: `SKU: <b>${sku}</b><br>ParentPO: <b>${parentPo}</b><br><br>Bạn có muốn TRỪ TỒN KHO cho dòng này không?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Có',
+            cancelButtonText: 'Không'
+        });
+
+        if (!askDeduct.isConfirmed) {
+            await fetch('/api/check_clp/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: item.id, is_selected: 1 })
+            });
+            item.is_selected = 1;
             selectedIds.add(item.id);
             renderTable();
             return;
@@ -427,14 +477,51 @@
             const deductQty = Math.min(pickQty, invQty);
             const remaining = invQty - deductQty;
 
-            if (confirm(`Tìm thấy 1 dòng tồn kho:\n- ID: ${inv.id}\n- Tồn: ${invQty}\n\nHệ thống sẽ tự động trừ ${deductQty} carton.\nCòn lại: ${remaining}`)) {
+            const askAuto = await Swal.fire({
+                title: 'Tự động trừ',
+                html: `Tìm thấy 1 dòng tồn kho:<br>- ID: <b>${inv.id}</b><br>- Tồn: <b>${invQty}</b><br><br>Hệ thống dự kiến trừ <b style="color:#d33">${deductQty}</b> carton.<br>Còn lại: <b>${remaining}</b>`,
+                icon: 'info',
+                showCancelButton: true,
+                confirmButtonText: 'Xác nhận trừ',
+                cancelButtonText: 'Hủy'
+            });
+
+            if (askAuto.isConfirmed) {
                 await executeDeduct(inv.id, remaining);
                 // Cập nhật lại local inventoryData để đồng bộ
                 inv.qty_invetory = remaining;
+
+                const newRemark = (item.remark || '').replace(/\[Trừ:\s*\d+\]/g, '').trim() + ` [Trừ: ${deductQty}]`;
+                
+                let payload = { id: item.id, is_selected: 1, remark: newRemark.trim() };
+                if (pickQty > deductQty) {
+                    const cbmPerCarton = Number(item.cbm_per_carton) || (Number(item.total_cbm) / pickQty) || 0;
+                    payload.carton_qty = deductQty;
+                    payload.total_cbm = deductQty * cbmPerCarton;
+                    item.carton_qty = payload.carton_qty;
+                    item.total_cbm = payload.total_cbm;
+                }
+
+                await fetch('/api/check_clp/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                item.remark = newRemark.trim();
+                item.is_selected = 1;
+
                 selectedIds.add(item.id);
                 renderTable();
+                Swal.fire({ title: 'Thành công', text: 'Đã trừ tồn kho tự động.', icon: 'success', timer: 1500, showConfirmButton: false });
             } else {
                 // Nếu hủy trừ thì vẫn chọn dòng picking (theo logic popup)
+                await fetch('/api/check_clp/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: item.id, is_selected: 1 })
+                });
+                item.is_selected = 1;
+
                 selectedIds.add(item.id);
                 renderTable();
             }
@@ -451,7 +538,15 @@
         const deductedQty = match ? parseInt(match[1]) : 0;
 
         if (deductedQty > 0) {
-            if (!confirm(`Dòng này đã trừ ${deductedQty} carton.\nBạn có muốn HOÀN TRẢ lại vào kho và BỎ CHỌN không?`)) return;
+            const askReturn = await Swal.fire({
+                title: 'Hoàn trả Tồn kho',
+                html: `Dòng này đã trừ <b>${deductedQty}</b> carton.<br>Bạn có muốn HOÀN TRẢ lại vào kho và BỎ CHỌN không?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Hoàn trả',
+                cancelButtonText: 'Hủy'
+            });
+            if (!askReturn.isConfirmed) return;
 
             // Tìm tồn kho tương ứng để trả lại (ParentPO + SKU)
             const targets = inventoryData.filter(inv => 
@@ -460,7 +555,7 @@
             );
 
             if (targets.length === 0) {
-                alert('⚠️ Không tìm thấy bản ghi Inventory (ParentPO/SKU) tương ứng để hoàn trả.\nVui lòng kiểm tra lại dữ liệu.');
+                Swal.fire('Lỗi', 'Không tìm thấy bản ghi Inventory tương ứng để hoàn trả.\nVui lòng kiểm tra lại dữ liệu.', 'error');
                 return;
             }
 
@@ -480,8 +575,9 @@
                 
                 // Cập nhật local data
                 targetInv.qty_invetory = newQty;
+                Swal.fire({ title: 'Hoàn trả thành công', icon: 'success', timer: 1500, showConfirmButton: false });
             } catch (err) {
-                alert('❌ Lỗi hoàn kho: ' + err.message);
+                Swal.fire('Lỗi hoàn kho', err.message, 'error');
                 return;
             }
         }
@@ -511,7 +607,7 @@
             });
             if (!res.ok) throw new Error('Lỗi server');
         } catch (err) {
-            alert('Lỗi cập nhật tồn kho: ' + err.message);
+            Swal.fire('Lỗi', 'Lỗi cập nhật tồn kho: ' + err.message, 'error');
         }
     }
 
@@ -544,6 +640,13 @@
         document.getElementById('deductModal').style.display = 'none';
         if (currentDeductItem) {
             // Nếu đóng mà không xác nhận -> coi như chỉ chọn picking list mà không trừ
+            fetch('/api/check_clp/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: currentDeductItem.id, is_selected: 1 })
+            });
+            currentDeductItem.is_selected = 1;
+
             selectedIds.add(currentDeductItem.id);
             renderTable();
             currentDeductItem = null;
@@ -560,7 +663,7 @@
             if (val > 0) {
                 const current = Number(input.dataset.current);
                 if (val > current) {
-                    alert('Số lượng trừ không được lớn hơn tồn kho!');
+                    Swal.fire('Lỗi', 'Số lượng trừ không được lớn hơn tồn kho!', 'error');
                     return;
                 }
                 updates.push({ id: input.dataset.invid, newQty: current - val, deduct: val, refInv: inventoryData.find(i => i.id == input.dataset.invid) });
@@ -570,7 +673,15 @@
 
         const need = Number(currentDeductItem.carton_qty) || 0;
         if (totalDeduct !== need) {
-            if (!confirm(`Bạn đang trừ ${totalDeduct} carton (Yêu cầu: ${need}).\nBạn có chắc chắn không?`)) return;
+            const askMulti = await Swal.fire({
+                title: 'Xác nhận trừ',
+                text: `Bạn đang trừ ${totalDeduct} carton (Yêu cầu: ${need}). Bạn có chắc chắn không?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Đồng ý',
+                cancelButtonText: 'Hủy'
+            });
+            if (!askMulti.isConfirmed) return;
         }
 
         // Thực hiện trừ
@@ -580,7 +691,36 @@
             if (up.refInv) up.refInv.qty_invetory = up.newQty;
         }
 
-        alert(`Đã trừ thành công ${totalDeduct} carton từ ${updates.length} dòng inventory.`);
+        if (totalDeduct > 0) {
+            const newRemark = (currentDeductItem.remark || '').replace(/\[Trừ:\s*\d+\]/g, '').trim() + ` [Trừ: ${totalDeduct}]`;
+            let payload = { id: currentDeductItem.id, is_selected: 1, remark: newRemark.trim() };
+            
+            if (totalDeduct < need) {
+                const cbmPerCarton = Number(currentDeductItem.cbm_per_carton) || (Number(currentDeductItem.total_cbm) / need) || 0;
+                payload.carton_qty = totalDeduct;
+                payload.total_cbm = totalDeduct * cbmPerCarton;
+                currentDeductItem.carton_qty = payload.carton_qty;
+                currentDeductItem.total_cbm = payload.total_cbm;
+            }
+
+            await fetch('/api/check_clp/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            currentDeductItem.remark = newRemark.trim();
+            currentDeductItem.is_selected = 1;
+        } else {
+            await fetch('/api/check_clp/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: currentDeductItem.id, is_selected: 1 })
+            });
+            currentDeductItem.is_selected = 1;
+        }
+
+        Swal.fire({ title: 'Thành công', text: `Đã trừ thành công ${totalDeduct} carton từ ${updates.length} dòng inventory.`, icon: 'success', timer: 2000, showConfirmButton: false });
+
         
         // Hoàn tất chọn
         document.getElementById('deductModal').style.display = 'none';
@@ -633,8 +773,26 @@
                 cbmEl.style.color = '#d63384'; // Màu gốc
                 cbmEl.style.fontSize = '1em';
             }
+
+            // Cập nhật Sticky Footer
+            const stickySummary = document.getElementById('stickySummary');
+            if(stickySummary) {
+                stickySummary.style.display = 'flex';
+                document.getElementById('stickyCount').innerText = count;
+                document.getElementById('stickyQty').innerText = qty.toLocaleString();
+                document.getElementById('stickyCbm').innerText = cbm.toFixed(3);
+                
+                if (cbm > 56.5) {
+                    document.getElementById('stickyCbm').style.color = '#ffcccc';
+                } else {
+                    document.getElementById('stickyCbm').style.color = 'white';
+                }
+            }
         } else {
             summaryDiv.style.display = 'none';
+            if (document.getElementById('stickySummary')) {
+                document.getElementById('stickySummary').style.display = 'none';
+            }
         }
     }
 

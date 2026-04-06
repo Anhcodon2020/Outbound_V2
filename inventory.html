@@ -32,8 +32,32 @@
         .search-input { padding: 10px; width: 100%; max-width: 300px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
         .btn-edit { background-color: #ffc107; color: #333; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
         .btn-edit:hover { background-color: #e0a800; }
+        
+        /* Style cho sorting */
+        th.sortable { cursor: pointer; user-select: none; position: relative; }
+        th.sortable:hover { background-color: #0056b3; }
+        
+        /* Modal chi tiết BBR */
+        .modal-bbr { width: 600px !important; }
+        .bbr-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; margin-bottom: 15px; background: #f8fafc; padding: 10px; border-radius: 6px; }
+        .bbr-info-grid div span { color: #64748b; font-size: 13px; }
+        .bbr-info-grid div strong { display: block; color: #1e293b; }
+
+        /* Thêm thanh cuộn cho nội dung BBR khi dữ liệu quá dài */
+        #bbrModalContent {
+            max-height: 60vh; /* Giới hạn chiều cao tối đa là 60% màn hình */
+            overflow-y: auto; /* Hiện thanh kéo khi nội dung vượt quá chiều cao */
+            padding-right: 10px;
+            margin: 15px 0;
+        }
     </style>
 </head>
+<style>
+    .clickable-row {
+        cursor: pointer;
+    }
+    .clickable-row:hover { background-color: #f1f5ff !important; }
+</style>
 <body>
 
 <div class="container">
@@ -63,6 +87,13 @@
         <div style="display: flex; gap: 10px;">
             <input type="text" id="skuSearch" class="search-input" placeholder="🔍 Tìm kiếm theo SKU..." oninput="filterData()">
             <input type="text" id="parentPoSearch" class="search-input" placeholder="🔍 Tìm Parent PO..." oninput="filterData()">
+            <button class="btn-import" onclick="exportExcel()" style="background-color: #0d6efd;">📥 Xuất Excel</button>
+            <button class="btn-import" onclick="openLookupModal()" style="background-color: #6366f1;">🔍 Tra cứu PO</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; background: #fff; padding: 5px 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <button id="prevBtn" onclick="prevPage()" style="padding: 5px 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">⬅️ Trước</button>
+            <span id="pageInfo" style="font-size: 14px; font-weight: bold; color: #555; min-width: 120px; text-align: center;">Trang 1/1</span>
+            <button id="nextBtn" onclick="nextPage()" style="padding: 5px 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">Tiếp ➡️</button>
         </div>
         <div style="font-size: 18px; font-weight: bold; background: #fff; padding: 10px 20px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
             📦 Tổng CBM: <span id="grandTotalCbm" style="color: #28a745; font-size: 1.2em;">0.0000</span> m³
@@ -76,15 +107,21 @@
                 <th>Parent PO</th>
                 <th>SKU</th>
                 <th>Qty Onhand</th>
-                <th>Date Receive</th>
+                <th class="sortable" onclick="toggleSort()">Date Receive <span id="sortIcon">▼</span></th>
+                <th>Due Date (Days)</th>
                 <th>Total CBM (m³)</th>
                 <th>Date Update</th>
                 <th>Hành động</th>
             </tr>
         </thead>
         <tbody>
-            <!-- Dữ liệu sẽ được chèn vào đây -->
+            <tr><td colspan="9" style="text-align:center">⏳ Đang tải dữ liệu, vui lòng chờ...</td></tr>
         </tbody>
+        <tfoot id="invTableFooter" style="background: #f8f9fa; font-weight: bold;">
+            <tr>
+                <td colspan="9" style="text-align:center; color: #64748b;">Đang tính toán thống kê...</td>
+            </tr>
+        </tfoot>
     </table>
 </div>
 
@@ -97,31 +134,73 @@
     }
 
     let allData = []; // Biến lưu trữ toàn bộ dữ liệu
+    let filteredData = []; // Biến lưu trữ dữ liệu sau khi lọc
+    let currentSortDir = 'desc'; // Mặc định mới nhất lên đầu
+    const pageSize = 50; // Số dòng trên mỗi trang
+    let currentPage = 1;
 
     // Hàm render bảng
-    function renderTable(data) {
+    function renderTable() {
         const tableBody = document.querySelector('#invTable tbody');
+        const tableFooter = document.querySelector('#invTableFooter');
         tableBody.innerHTML = '';
-        let totalCbmSum = 0; // Biến lưu tổng CBM
+        let totalCbmSum = 0;
+        let totalQtySum = 0;
 
-        if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Chưa có dữ liệu phù hợp</td></tr>';
-            document.getElementById('grandTotalCbm').innerText = '0.0000';
+        // Tính tổng CBM trên TOÀN BỘ dữ liệu đã lọc (không chỉ trang hiện tại)
+        filteredData.forEach(item => {
+            totalQtySum += Number(item.qty_invetory) || 0;
+            totalCbmSum += parseFloat(item.total_cbm) || 0;
+        });
+        document.getElementById('grandTotalCbm').innerText = totalCbmSum.toFixed(4);
+
+        if (filteredData.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center">Chưa có dữ liệu phù hợp</td></tr>';
+            document.getElementById('pageInfo').innerText = 'Trang 0/0';
+            tableFooter.innerHTML = '';
             return;
         }
 
-        data.forEach(item => {
+        // Tính toán số trang và cắt dữ liệu cho trang hiện tại
+        const totalPages = Math.ceil(filteredData.length / pageSize);
+        if (currentPage > totalPages) currentPage = totalPages || 1;
+
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+        const pageRows = filteredData.slice(start, end);
+
+        document.getElementById('pageInfo').innerText = `Trang ${currentPage}/${totalPages} (hiển thị ${pageRows.length}/${filteredData.length})`;
+        document.getElementById('prevBtn').disabled = currentPage <= 1;
+        document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+
+        pageRows.forEach(item => {
             const itemCbm = parseFloat(item.total_cbm) || 0;
-            totalCbmSum += itemCbm; // Cộng dồn CBM
+            
+            // Tính Due Date: Today - Date Rcv
+            const today = new Date();
+            const rcvDate = new Date(item.date_rcv);
+            const diffTime = today - rcvDate;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            const dueDateDisplay = isNaN(diffDays) ? '-' : diffDays;
+            const dueDateStyle = diffDays > 14 ? 'background-color: #fee2e2; color: #b91c1c; font-weight: bold; text-align: center;' : 'text-align: center;';
 
             const row = document.createElement('tr');
+            row.classList.add('clickable-row');
+            // Gắn sự kiện click cho cả dòng, nhưng ngăn không cho nút "Sửa" kích hoạt sự kiện này
+            row.onclick = (event) => {
+                if (event.target.tagName === 'BUTTON' || event.target.closest('.btn-edit')) {
+                    return;
+                }
+                openBbrDetailModal(item.parent_po_invent, item.sku_inventory);
+            };
             row.innerHTML = `
                 <td>${item.id}</td>
                 <td>${item.parent_po_invent || ''}</td>
                 <td>${item.sku_inventory || ''}</td>
                 <td>${item.qty_invetory || 0}</td>
                 <td>${formatDate(item.date_rcv)}</td>
-                <td style="font-weight:bold; color:#28a745;">${itemCbm.toFixed(4)}</td>
+                <td style="${dueDateStyle}">${dueDateDisplay}</td>
+                <td style="font-weight:bold; color:#28a745;">${itemCbm.toFixed(4)} m³</td>
                 <td>${formatDate(item.date_update)}</td>
                 <td>
                     <button class="btn-edit" onclick="openEditModal(${item.id}, ${item.qty_invetory || 0})">✏️ Sửa</button>
@@ -130,8 +209,16 @@
             tableBody.appendChild(row);
         });
 
-        // Cập nhật số tổng ra màn hình
-        document.getElementById('grandTotalCbm').innerText = totalCbmSum.toFixed(4);
+        // Cập nhật Footer thống kê
+        tableFooter.innerHTML = `
+            <tr style="background: #f1f5f9; border-top: 2px solid #007bff;">
+                <td colspan="3" style="text-align: right; padding: 12px;">TỔNG CỘNG (Theo bộ lọc):</td>
+                <td style="padding: 12px; font-size: 1.1em; color: #007bff;">${totalQtySum.toLocaleString()}</td>
+                <td colspan="2"></td>
+                <td style="padding: 12px; font-size: 1.1em; color: #28a745;">${totalCbmSum.toFixed(4)} m³</td>
+                <td colspan="2"></td>
+            </tr>
+        `;
     }
 
     // Hàm lọc và sắp xếp dữ liệu
@@ -140,29 +227,61 @@
         const searchParentPo = document.getElementById('parentPoSearch').value.toLowerCase().trim();
 
         // Lọc theo SKU và Parent PO
-        let filtered = allData.filter(item =>
+        filteredData = allData.filter(item =>
             (item.sku_inventory || '').toLowerCase().includes(searchKeyword) &&
             (item.parent_po_invent || '').toString().toLowerCase().includes(searchParentPo)
         );
 
-        // Sắp xếp theo date_rcv tăng dần (ASC)
-        filtered.sort((a, b) => {
+        // Sắp xếp theo ngày
+        filteredData.sort((a, b) => {
             const dateA = new Date(a.date_rcv || 0);
             const dateB = new Date(b.date_rcv || 0);
-            return dateA - dateB;
+            return currentSortDir === 'asc' ? dateA - dateB : dateB - dateA;
         });
 
-        renderTable(filtered);
+        currentPage = 1; // Reset về trang 1 khi lọc hoặc sắp xếp
+        renderTable();
+    }
+
+    function prevPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            renderTable();
+        }
+    }
+
+    function nextPage() {
+        const totalPages = Math.ceil(filteredData.length / pageSize);
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderTable();
+        }
+    }
+
+    function toggleSort() {
+        currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+        document.getElementById('sortIcon').innerText = currentSortDir === 'asc' ? '▲' : '▼';
+        filterData();
     }
 
     fetch('/api/inventory')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Phản hồi từ máy chủ không hợp lệ (HTTP ' + response.status + ')');
+            return response.json();
+        })
         .then(data => {
-            allData = data;
+            allData = Array.isArray(data) ? data : [];
             filterData(); // Gọi hàm lọc để hiển thị và sắp xếp ban đầu
         })
         .catch(err => {
             console.error('Lỗi tải dữ liệu Inventory:', err);
+            const tableBody = document.querySelector('#invTable tbody');
+            tableBody.innerHTML = `
+                <tr><td colspan="8" style="text-align:center; color:#dc3545; font-weight:bold; padding: 20px;">
+                    ❌ Lỗi tải dữ liệu: ${err.message}<br>
+                    <button onclick="location.reload()" style="margin-top:10px; cursor:pointer; padding:5px 10px;">Thử lại</button>
+                </td></tr>`;
+            document.getElementById('pageInfo').innerText = 'Lỗi tải dữ liệu';
         });
 
     // --- IMPORT EXCEL ---
@@ -316,6 +435,237 @@
             alert('Lỗi: ' + error.message);
         }
     }
+
+    // --- XEM CHI TIẾT BBR ---
+    let lastBbrDetailData = []; // Lưu trữ dữ liệu để xuất Excel
+    let lastBbrParams = { parentPo: '', sku: '' };
+
+    async function openBbrDetailModal(parentPo, sku) {
+        const modal = document.getElementById('bbrModal');
+        const content = document.getElementById('bbrModalContent');
+        content.innerHTML = '<p>Đang tải dữ liệu BBR...</p>';
+        modal.style.display = 'flex';
+
+        try {
+            const res = await fetch(`/api/bbr/detail?parent_po=${encodeURIComponent(parentPo)}&sku=${encodeURIComponent(sku)}`);
+            const data = await res.json();
+
+            // Kiểm tra nếu không có dữ liệu hoặc dữ liệu rỗng từ API
+            if (!data || data.length === 0) {
+                content.innerHTML = `<div style="padding:20px; color:#ef4444;">⚠️ Không tìm thấy dữ liệu liên kết trong BBR Report cho SKU này.</div>`;
+                lastBbrDetailData = [];
+                return;
+            }
+
+            // Lọc chỉ những dòng có release_key hợp lệ (không null hoặc rỗng), theo yêu cầu
+            const filteredData = data.filter(row => row.release_key && row.release_key.trim() !== '');
+            if (filteredData.length === 0) {
+                content.innerHTML = `<div style="padding:20px; color:#ef4444;">⚠️ Không tìm thấy dữ liệu Releasing hợp lệ cho SKU này.</div>`;
+                lastBbrDetailData = [];
+                return;
+            }
+
+            // Nhóm dữ liệu theo Child PO và Release Key để mapping chính xác từ Releasing
+            const groupedMap = new Map();
+            filteredData.forEach(row => { // Sử dụng filteredData đã lọc
+
+                const cpo = row.child_po;
+                const rk = row.release_key;
+                const groupKey = `${cpo}||${rk}`;
+                
+                if (groupedMap.has(groupKey)) {
+                    const existingRow = groupedMap.get(groupKey);
+                    existingRow.qty_bbr += (Number(row.qty_bbr) || 0);
+                    existingRow.qty_outbound += (Number(row.qty_outbound) || 0);
+                    existingRow.qty_release += (Number(row.qty_release) || 0);
+                } else {
+                    groupedMap.set(groupKey, { 
+                        ...row, 
+                        qty_bbr: (Number(row.qty_bbr) || 0), 
+                        qty_outbound: (Number(row.qty_outbound) || 0),
+                        qty_release: (Number(row.qty_release) || 0)
+                    });
+                }
+            });
+
+            const processedData = Array.from(groupedMap.values());
+            lastBbrDetailData = filteredData; // Lưu dữ liệu đã lọc cho chức năng xuất Excel
+            lastBbrParams = { parentPo, sku };
+
+            let totalBbr = 0, totalShipped = 0, totalBalance = 0, totalRelease = 0;
+
+            let html = `
+                <div class="bbr-info-grid">
+                    <div><span>Parent PO</span><strong>${parentPo}</strong></div>
+                    <div><span>SKU</span><strong>${sku}</strong></div>
+                </div>
+                <table style="width:100%; font-size:13px; border-collapse:collapse;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Child PO</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Release Key</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Qty Release</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Qty BBR</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Ngày Nhận/Xuất</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Qty Shipped</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Balance</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Ghi chú</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            processedData.forEach(row => {
+                const bbrQty = Number(row.qty_bbr) || 0;
+                const shippedQty = Number(row.qty_outbound) || 0;
+                const balance = bbrQty - shippedQty;
+                const releaseQty = Number(row.qty_release) || 0;
+
+                totalBbr += bbrQty;
+                totalShipped += shippedQty;
+                totalBalance += balance;
+                totalRelease += releaseQty;
+
+                // Màu sắc: Đỏ nếu xuất quá, Xanh nếu hoàn thành, Xám nếu còn tồn
+                const balanceColor = balance < 0 ? '#dc3545' : (balance === 0 ? '#198754' : '#64748b');
+                let rowStyle = '';
+                if (balance < 0) rowStyle = 'background-color: #fff1f0;'; // Over-shipped (Đỏ)
+                else if (shippedQty === 0) rowStyle = 'background-color: #fffbeb;'; // Chưa xuất (Vàng nhạt)
+
+                html += `
+                    <tr style="${rowStyle}" title="${shippedQty === 0 ? 'Child PO này chưa có dữ liệu xuất trong Outbound' : ''}">
+                        <td style="padding:8px; border:1px solid #e2e8f0;">${row.child_po || ''}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:#6366f1;">${row.release_key || '-'}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; text-align:right;">${releaseQty}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:#0d6efd; text-align:right;">${bbrQty}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; font-size:11px; color:#64748b;">${row.date_list || '-'}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:#16a34a; text-align:right;">${shippedQty}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:${balanceColor}; text-align:right;">${balance}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; color:#64748b;">${row.remark || ''}</td>
+                    </tr>
+                `;
+            });
+            html += `
+                    </tbody>
+                    <tfoot style="background:#f8f9fa; font-weight:bold;">
+                        <tr>
+                            <td colspan="2" style="padding:8px; border:1px solid #e2e8f0; text-align:center;">TỔNG CỘNG</td>
+                            <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:#6366f1;">${totalRelease}</td>
+                            <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:#0d6efd;">${totalBbr}</td>
+                            <td style="padding:8px; border:1px solid #e2e8f0;"></td>
+                            <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:#16a34a;">${totalShipped}</td>
+                            <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:${totalBalance < 0 ? '#dc3545' : '#198754'};">${totalBalance}</td>
+                            <td style="padding:8px; border:1px solid #e2e8f0;"></td>
+                        </tr>
+                    </tfoot>
+                </table>`;
+            content.innerHTML = html;
+        } catch (err) {
+            content.innerHTML = '<p style="color:red;">Lỗi khi tải dữ liệu.</p>';
+        }
+    }
+
+    function closeBbrModal() {
+        document.getElementById('bbrModal').style.display = 'none';
+    }
+
+    function exportBbrDetailToExcel() {
+        if (!lastBbrDetailData || lastBbrDetailData.length === 0) {
+            alert("Không có dữ liệu để xuất!");
+            return;
+        }
+
+        const exportData = lastBbrDetailData.map(row => ({
+            "Child PO": row.child_po || '',
+            "Release Key": row.release_key || '',
+            "Job No": row.job_list || '',
+            "Ngày Nhận/Xuất": row.date_list || '',
+            "Qty Release": Number(row.qty_release) || 0,
+            "Qty BBR": Number(row.qty_bbr) || 0,
+            "Qty Shipped": Number(row.qty_outbound) || 0,
+            "Balance": (Number(row.qty_bbr) || 0) - (Number(row.qty_outbound) || 0),
+            "Ghi chú": row.remark || ''
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "BBR Detail");
+
+        ws['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 20 }];
+
+        XLSX.writeFile(wb, `BBR_Detail_${lastBbrParams.parentPo}_${lastBbrParams.sku}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    // --- XUẤT EXCEL ---
+    function exportExcel() {
+        if (filteredData.length === 0) {
+            alert("Không có dữ liệu để xuất!");
+            return;
+        }
+
+        // Chuẩn bị dữ liệu cho Excel (lấy toàn bộ dữ liệu đang được lọc/tìm kiếm)
+        const exportData = filteredData.map(item => {
+            const today = new Date();
+            const rcvDate = new Date(item.date_rcv);
+            const diffDays = Math.floor((today - rcvDate) / (1000 * 60 * 60 * 24));
+
+            return {
+                "ID": item.id,
+                "Parent PO": item.parent_po_invent || '',
+                "SKU": item.sku_inventory || '',
+                "Số lượng": item.qty_invetory || 0,
+                "Ngày nhận": formatDate(item.date_rcv),
+                "Due Date (Days)": isNaN(diffDays) ? '' : diffDays,
+                "Tổng CBM (m3)": (parseFloat(item.total_cbm) || 0).toFixed(4),
+                "Ngày cập nhật": formatDate(item.date_update)
+            };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+
+        // Tự động căn chỉnh độ rộng cột cơ bản cho file Excel
+        ws['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+
+        // Thực hiện tải file về máy
+        XLSX.writeFile(wb, `Inventory_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    // --- CHỨC NĂNG TRA CỨU PO NHANH ---
+    function openLookupModal() {
+        document.getElementById('lookupModal').style.display = 'flex';
+        document.getElementById('lookupResult').innerHTML = '';
+    }
+    function closeLookupModal() {
+        document.getElementById('lookupModal').style.display = 'none';
+    }
+    async function startLookup() {
+        const childPo = document.getElementById('lookupChildPo').value.trim();
+        const sku = document.getElementById('lookupSku').value.trim();
+        const resDiv = document.getElementById('lookupResult');
+
+        if (!childPo || !sku) { alert('Vui lòng nhập đủ Child PO và SKU'); return; }
+        resDiv.innerHTML = '<p>Đ đang tìm kiếm...</p>';
+
+        try {
+            const res = await fetch(`/api/lookup/po?child_po=${encodeURIComponent(childPo)}&sku=${encodeURIComponent(sku)}`);
+            const data = await res.json();
+            if (!data || !data.length) { resDiv.innerHTML = '<p style="color:red">Không tìm thấy dữ liệu liên kết.</p>'; return; }
+            
+            let html = '<table style="width:100%; margin-top:10px; font-size:13px; border-collapse:collapse;">';
+            html += '<tr style="background:#eee;"><th>Release Key</th><th>Ngày</th><th>Số lượng (ctn)</th><th>Trạng thái</th></tr>';
+            data.forEach(r => {
+                const st = r.status == 1 ? 'Open' : (r.status == 3 ? 'Allocate' : r.status);
+                html += `<tr><td style="border:1px solid #ddd; padding:5px;">${r.release_key}</td>
+                             <td style="border:1px solid #ddd; padding:5px;">${formatDate(r.release_date)}</td>
+                             <td style="border:1px solid #ddd; padding:5px; font-weight:bold; color:#6366f1;">${r.release_qty}</td>
+                             <td style="border:1px solid #ddd; padding:5px;">${st}</td></tr>`;
+            });
+            html += '</table>';
+            resDiv.innerHTML = html;
+        } catch(e) { resDiv.innerHTML = '<p style="color:red">Lỗi kết nối server</p>'; }
+    }
 </script>
 
 <!-- Modal Progress -->
@@ -374,6 +724,39 @@
         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
             <button id="btnConfirmYes" class="btn-import" onclick="executeUpdate()">Đồng ý</button>
             <button onclick="closeConfirmModal()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Hủy</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal BBR Detail -->
+<div id="bbrModal" class="modal-overlay">
+    <div class="modal-content modal-bbr">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+            <h3 style="margin: 0; color: #0d6efd;">📋 Chi tiết BBR Report</h3>
+            <span style="cursor: pointer; font-size: 28px; font-weight: bold; color: #aaa; line-height: 1;" onclick="closeBbrModal()" onmouseover="this.style.color='#000'" onmouseout="this.style.color='#aaa'">&times;</span>
+        </div>
+        <div id="bbrModalContent"></div>
+        <div style="text-align: right; margin-top: 20px;">
+            <button onclick="exportBbrDetailToExcel()" style="padding: 8px 20px; background-color: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold; margin-right: 10px;">📥 Xuất Excel Chi Tiết</button>
+            <button onclick="closeBbrModal()" style="padding: 8px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight:bold;">Đóng</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Tra cứu nhanh -->
+<div id="lookupModal" class="modal-overlay">
+    <div class="modal-content" style="width: 450px;">
+        <h3 style="margin-top:0; color: #6366f1;">🔍 Tra cứu Số Carton (Releasing)</h3>
+        <div style="text-align: left; margin-bottom: 15px;">
+            <label style="font-size:13px; color:#666;">Child PO:</label>
+            <input type="text" id="lookupChildPo" class="search-input" style="width:100%; margin-bottom:10px;" placeholder="Nhập mã Child PO...">
+            <label style="font-size:13px; color:#666;">SKU:</label>
+            <input type="text" id="lookupSku" class="search-input" style="width:100%;" placeholder="Nhập mã SKU...">
+        </div>
+        <div id="lookupResult" style="min-height: 50px; margin-bottom: 15px; border-top: 1px solid #eee;"></div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn-import" style="background:#6366f1;" onclick="startLookup()">Tìm kiếm</button>
+            <button class="btn-import" style="background:#6c757d;" onclick="closeLookupModal()">Đóng</button>
         </div>
     </div>
 </div>

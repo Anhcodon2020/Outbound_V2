@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿// Import cÃ¡c module cáº§n thiáº¿t
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// Import cÃ¡c module cáº§n thiáº¿t
 require('dotenv').config(); // Load biáº¿n mÃ´i trÆ°á»ng tá»« file .env
 const http = require('http');
 const fs = require('fs');
@@ -142,6 +142,22 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // --- API: Delete All Releasing ---
+    if (pathname === '/api/releasing/delete_all' && req.method === 'POST') {
+        const sql = 'DELETE FROM releasing';
+        pool.query(sql, (err, result) => {
+            if (err) {
+                console.error('Lỗi xóa sạch bảng releasing:', err);
+                res.writeHead(500, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Lỗi server', details: err.message }));
+            } else {
+                res.writeHead(200, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ message: 'Deleted all items', affected: result.affectedRows }));
+            }
+        });
+        return;
+    }
+
     // --- API: Reset is_checked for all releasing ---
     if (pathname === '/api/releasing/reset_check' && req.method === 'POST') {
         const sql = 'UPDATE releasing SET is_checked = 0';
@@ -223,7 +239,17 @@ const server = http.createServer((req, res) => {
 
     // --- API MODEL: Xá»­ lÃ½ dá»¯ liá»‡u DSO ---
     if (pathname === '/api/dso' && req.method === 'GET') {
-        const sql = 'SELECT * FROM dso ORDER BY id DESC';
+        const sql = `
+            SELECT 
+                d.*, 
+                GROUP_CONCAT(DISTINCT r.sku SEPARATOR ', ') AS sku,
+                GROUP_CONCAT(DISTINCT b.parent_po SEPARATOR ', ') AS parent_po
+            FROM dso d
+            LEFT JOIN releasing r ON d.release_key = r.release_key
+            LEFT JOIN bbrreport_raw b ON d.child_po = b.child_po AND r.sku = b.sku
+            GROUP BY d.id
+            ORDER BY d.id DESC
+        `;
         pool.query(sql, (err, results) => {
             if (err) {
                 console.error('Lá»—i truy váº¥n SQL:', err);
@@ -232,6 +258,22 @@ const server = http.createServer((req, res) => {
             } else {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(results));
+            }
+        });
+        return;
+    }
+
+    // --- API: Clear DSO table ---
+    if (pathname === '/api/dso/clear' && req.method === 'POST') {
+        const sql = 'DELETE FROM dso';
+        pool.query(sql, (err, result) => {
+            if (err) {
+                console.error('Lỗi xóa bảng DSO:', err);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Lỗi Server', details: err.message }));
+            } else {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: 'Đã xóa toàn bộ bảng DSO', affected: result.affectedRows }));
             }
         });
         return;
@@ -332,7 +374,7 @@ const server = http.createServer((req, res) => {
                 }
 
                 const sql = `
-                    INSERT INTO bbrreport_raw (child_po, parent_po, sku, qty_bbr, remark)
+                    INSERT INTO bbrreport_raw (child_po, parent_po, sku, qty_bbr, remark, is_select)
                     VALUES ?
                     ON DUPLICATE KEY UPDATE 
                         qty_bbr = VALUES(qty_bbr)
@@ -347,7 +389,8 @@ const server = http.createServer((req, res) => {
                             item.parent_po,
                             item.sku,
                             item.qty_bbr ?? 0,
-                            item.remark || 'Import Excel'
+                            item.remark || 'Import Excel',
+                            0 // Mặc định chưa chọn khi import mới
                         ]);
                     if (values.length === 0) continue;
 
@@ -369,6 +412,35 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // --- API: Cập nhật trạng thái is_select cho BBR ---
+    if (pathname === '/api/bbr/update' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const { id, is_select } = JSON.parse(body);
+                if (id === undefined) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ error: 'Thiếu id' }));
+                }
+                const sql = 'UPDATE bbrreport_raw SET is_select = ? WHERE id = ?';
+                pool.query(sql, [is_select ? 1 : 0, id], (err, result) => {
+                    if (err) {
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: err.message }));
+                    } else {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ message: 'Updated', id, is_select }));
+                    }
+                });
+            } catch (e) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+        });
+        return;
+    }
+
     // --- API MODEL: Check Data (Join Releasing -> DSO -> BBR) ---
     if (pathname === '/api/check' && req.method === 'GET') {
         const sql = `
@@ -379,7 +451,7 @@ const server = http.createServer((req, res) => {
             FROM releasing r
             LEFT JOIN dso d ON r.release_key = d.release_key
             LEFT JOIN bbrreport_raw b ON d.child_po = b.child_po AND r.sku = b.sku
-            WHERE r.status = 3
+            WHERE r.status IN (1, 3)
         `;
         pool.query(sql, (err, results) => {
             if (err) {
@@ -436,7 +508,12 @@ const server = http.createServer((req, res) => {
 
                 // 2. Chuáº©n bá»‹ dá»¯ liá»‡u Insert (Bulk Insert cho nhanh)
                 if (importData.length > 0) {
-                    const values = importData.map(item => {
+                    const values = importData
+                        .filter(item => { // Lọc chỉ lấy những dòng có số lượng > 0
+                            const qty = item.available_ctn ?? item.qty_invetory ?? item.allocated_ctn ?? 0;
+                            return qty > 0;
+                        })
+                        .map(item => {
                         const qty = item.available_ctn ?? item.qty_invetory ?? item.allocated_ctn ?? 0;
                         return [item.parent_po_invent, item.sku_inventory, qty, item.date_rcv, today];
                     });
@@ -578,6 +655,80 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // --- API MODEL: BBR Report Detail by Parent PO and SKU ---
+    if (pathname === '/api/bbr/detail' && req.method === 'GET') {
+        const parentPo = reqUrl.searchParams.get('parent_po');
+        const sku = reqUrl.searchParams.get('sku');
+
+        if (!parentPo || !sku) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing parent_po or sku' }));
+            return;
+        }
+
+        const sql = `
+            SELECT 
+                b.*, 
+                IFNULL(o.total_outbound, 0) AS qty_outbound,
+                o.job_list,
+                o.date_list,
+                r.release_key,
+                r.release_qty AS qty_release
+            FROM bbrreport_raw b
+            INNER JOIN dso d ON b.child_po = d.child_po
+            INNER JOIN releasing r ON d.release_key = r.release_key AND b.sku = r.sku
+            LEFT JOIN (
+                SELECT parentpo, childpo, sku, SUM(carton) AS total_outbound,
+                       GROUP_CONCAT(DISTINCT jobno SEPARATOR ', ') AS job_list,
+                       GROUP_CONCAT(DISTINCT DATE_FORMAT(IFNULL(datestuff, datercv), '%d/%m/%Y') SEPARATOR ', ') AS date_list
+                FROM outbound 
+                GROUP BY parentpo, childpo, sku
+            ) o ON b.parent_po = o.parentpo AND b.child_po = o.childpo AND b.sku = o.sku
+            WHERE b.parent_po = ? AND b.sku = ? 
+            ORDER BY b.id DESC
+        `;
+        pool.query(sql, [parentPo, sku], (err, results) => {
+            if (err) {
+                console.error('Lỗi truy vấn SQL (BBR Detail):', err);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Lỗi Server', details: err.message }));
+            } else {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(results));
+            }
+        });
+        return;
+    }
+
+    // --- API: Tra cứu số lượng carton từ Child PO và SKU (DSO -> Releasing) ---
+    if (pathname === '/api/lookup/po' && req.method === 'GET') {
+        const childPo = reqUrl.searchParams.get('child_po');
+        const sku = reqUrl.searchParams.get('sku');
+
+        if (!childPo || !sku) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing child_po or sku' }));
+            return;
+        }
+
+        const sql = `
+            SELECT d.release_key, r.release_qty, r.status, r.release_date
+            FROM dso d
+            INNER JOIN releasing r ON d.release_key = r.release_key
+            WHERE d.child_po = ? AND r.sku = ?
+        `;
+        pool.query(sql, [childPo, sku], (err, results) => {
+            if (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Lỗi server', details: err.message }));
+            } else {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(results));
+            }
+        });
+        return;
+    }
+
 // --- API MODEL: Allocate (Releasing -> DSO -> BBR -> Inventory) ---
     if (pathname === '/api/allocate' && req.method === 'GET') {
         const sql = `
@@ -622,14 +773,27 @@ const server = http.createServer((req, res) => {
                 const id = Number(payload.id);
                 const isSelected = payload.is_selected ? 1 : 0;
                 const remark = payload.remark; // Nhận thêm remark
+                const cartonQty = payload.carton_qty;
+                const totalCbm = payload.total_cbm;
+
                 if (!Number.isFinite(id)) {
                     res.writeHead(400, {'Content-Type': 'application/json'});
                     return res.end(JSON.stringify({ error: 'id không hợp lệ' }));
                 }
-                // Cập nhật is_selected và remark (nếu có)
-                const sql = 'UPDATE detail_pickinglist SET is_selected = ?, remark = COALESCE(?, remark), updated_at = NOW() WHERE id = ?';
+                
+                let sql = 'UPDATE detail_pickinglist SET is_selected = ?, remark = COALESCE(?, remark), updated_at = NOW()';
+                let params = [isSelected, remark];
+
+                if (cartonQty !== undefined && totalCbm !== undefined) {
+                    sql += ', carton_qty = ?, total_cbm = ?';
+                    params.push(cartonQty, totalCbm);
+                }
+                
+                sql += ' WHERE id = ?';
+                params.push(id);
+
                 await new Promise((resolve, reject) => {
-                    pool.query(sql, [isSelected, remark, id], (err, result) => err ? reject(err) : resolve(result));
+                    pool.query(sql, params, (err, result) => err ? reject(err) : resolve(result));
                 });
                 res.writeHead(200, {'Content-Type': 'application/json'});
                 res.end(JSON.stringify({ message: 'updated', id, is_selected: isSelected }));
@@ -799,21 +963,21 @@ const server = http.createServer((req, res) => {
                 `;
                 const values = rows.map(r => [
                     jobno,
-                    r.release_key || '',
-                    r.parentpo || r.parent_po || null,
-                    r.childpo || r.child_po || '',
+                    (r.release_key || '').substring(0, 255), // Truncate release_key
+                    (r.parentpo || r.parent_po || '').substring(0, 255), // Truncate parentpo
+                    (r.childpo || r.child_po || '').substring(0, 255), // Truncate childpo
                     (r.childpo || r.child_po || '').toString().substring(0,3),
-                    r.sku || '',
+                    (r.sku || '').substring(0, 255), // Truncate sku
                     Number(r.carton_qty) || 0,
-                    r.loading_type || null,
+                    (r.loading_type || '').substring(0, 255), // Truncate loading_type
                     Number(r.total_cbm) || 0,
                     today,
-                    r.container || null,
-                    r.seal || null,
+                    (r.container || '').substring(0, 255), // Truncate container
+                    (r.seal || '').substring(0, 255), // Truncate seal
                     r.datestuff || null,
-                    r.loosecase || null,
-                    r.kindpallet || null,
-                    r.remark || null
+                    r.loosecase ? r.loosecase.toString().substring(0, 50) : null,
+                    r.kindpallet ? r.kindpallet.toString().substring(0, 50) : null,
+                    (r.remark || '').substring(0, 255) // Truncate remark
                 ]);
                 
                 const [insertResult] = await conn.query(insertSql, [values]);
@@ -968,8 +1132,8 @@ const server = http.createServer((req, res) => {
                         // 2. Nếu chưa có (thêm mới) -> chuẩn bị Insert với is_selected = 1
                         if (!updated) {
                             const releaseQty = Number(item.release_qty) || 0;
-                            const invQty = Number(item.qty_invetory) || 0;
-                            const cartonQty = releaseQty <= invQty ? releaseQty : invQty;
+                            // const invQty = Number(item.qty_invetory) || 0; // Không còn dùng để giới hạn cartonQty
+                            const cartonQty = releaseQty; // Sử dụng releaseQty làm cartonQty
                             const cbmPerCarton = Number(item.cbm_per_carton) || 0;
                             const totalCbm = cbmPerCarton * cartonQty;
                             
@@ -1070,6 +1234,9 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/pallet.html') {
         fileName = 'pallet.html';
+    }
+    if (pathname === '/palletizing_ui.html') {
+        fileName = 'palletizing_ui.html';
     }
 
     const filePath = path.join(__dirname, fileName);

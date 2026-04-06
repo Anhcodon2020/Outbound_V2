@@ -59,11 +59,27 @@
         <button class="btn-import" onclick="importExcel()">📤 Tải lên & Xử lý</button>
     </div>
 
-    <div class="import-area" style="margin-top:-10px; justify-content: space-between; gap: 8px;">
-        <label style="margin:0; font-weight:bold;">Tìm Child PO:</label>
-        <input type="text" id="childSearch" placeholder="Nhập Child PO..." oninput="applyFilters()" style="flex:1; padding:8px; border:1px solid #ddd; border-radius:4px;">
+    <div class="import-area" style="margin-top:-10px; display: flex; gap: 10px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
+            <input type="text" id="childSearch" placeholder="🔍 Tìm Child PO..." oninput="applyFilters()" style="width: 100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+            <input type="text" id="parentSearch" placeholder="📑 Tìm Parent PO..." oninput="applyFilters()" style="width: 100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+            <input type="text" id="skuSearch" placeholder="📦 Tìm SKU..." oninput="applyFilters()" style="width: 100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        </div>
     </div>
-    
+
+    <div id="summaryStats" style="margin: 10px 0; display: flex; gap: 15px; flex-wrap: wrap;">
+        <div style="padding: 10px 15px; background: #e7f3ff; border: 1px solid #b8daff; border-radius: 5px; font-weight: bold; color: #004085;">
+            📦 Tổng carton (đang lọc): <span id="totalFiltered">0</span>
+        </div>
+        <div id="selectedBox" style="padding: 10px 15px; background: #e8f5e9; border: 1px solid #c3e6cb; border-radius: 5px; font-weight: bold; color: #155724; display: none;">
+            ✅ Đã chọn: <span id="totalSelected">0</span> carton
+        </div>
+    </div>
+
     <table id="bbrTable">
         <thead>
             <tr>
@@ -73,6 +89,7 @@
                 <th>SKU</th>
                 <th>Qty BBR</th>
                 <th>Remark</th>
+                <th style="text-align: center;">Chọn</th>
             </tr>
         </thead>
         <tbody>
@@ -96,23 +113,36 @@
         });
 
     function applyFilters() {
-        const keyword = (document.getElementById('childSearch').value || '').toLowerCase().trim();
-        const filtered = bbrData.filter(item => (item.child_po || '').toString().toLowerCase().includes(keyword));
+        const childKeyword = (document.getElementById('childSearch').value || '').toLowerCase().trim();
+        const parentKeyword = (document.getElementById('parentSearch').value || '').toLowerCase().trim();
+        const skuKeyword = (document.getElementById('skuSearch').value || '').toLowerCase().trim();
+
+        const filtered = bbrData.filter(item => {
+            const matchChild = (item.child_po || '').toString().toLowerCase().includes(childKeyword);
+            const matchParent = (item.parent_po || '').toString().toLowerCase().includes(parentKeyword);
+            const matchSku = (item.sku || '').toString().toLowerCase().includes(skuKeyword);
+            return matchChild && matchParent && matchSku;
+        });
         renderTable(filtered);
     }
 
     function renderTable(data) {
         const tableBody = document.querySelector('#bbrTable tbody');
+
         if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Chưa có dữ liệu</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Chưa có dữ liệu</td></tr>';
+            document.getElementById('totalFiltered').innerText = '0';
             return;
         }
+
+        let sumFiltered = 0;
         tableBody.innerHTML = '';
         data.forEach(item => {
             const row = document.createElement('tr');
             
             // Kiểm tra nếu Qty BBR là 0 hoặc không có dữ liệu (null) thì thêm class cảnh báo
             const displayQty = item.qty_bbr || 0;
+            sumFiltered += Number(displayQty);
             if (displayQty === 0) {
                 row.classList.add('warning-row');
             }
@@ -124,9 +154,49 @@
                 <td>${item.sku || ''}</td>
                 <td>${displayQty}</td>
                 <td>${item.remark || ''}</td>
+                <td style="text-align:center;">
+                    <input type="checkbox" ${item.is_select ? 'checked' : ''} onchange="toggleSelect('${item.id}', this.checked)">
+                </td>
             `;
             tableBody.appendChild(row);
         });
+
+        document.getElementById('totalFiltered').innerText = sumFiltered.toLocaleString();
+        updateSelectedSummary();
+    }
+
+    function updateSelectedSummary() {
+        const selBox = document.getElementById('selectedBox');
+        const selSpan = document.getElementById('totalSelected');
+        
+        // Tính tổng dựa trên toàn bộ bbrData (bao gồm cả những dòng đang bị ẩn do tìm kiếm)
+        const sumSelected = bbrData.filter(i => i.is_select).reduce((acc, item) => acc + (Number(item.qty_bbr) || 0), 0);
+        
+        if (sumSelected > 0) {
+            selSpan.innerText = sumSelected.toLocaleString();
+            selBox.style.display = 'block';
+        } else {
+            selBox.style.display = 'none';
+        }
+    }
+
+    async function toggleSelect(id, checked) {
+        try {
+            const resp = await fetch('/api/bbr/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: Number(id), is_select: checked ? 1 : 0 })
+            });
+            if (!resp.ok) throw new Error('Cập nhật thất bại');
+            
+            // Cập nhật trạng thái local để tính toán lại sum mà không cần tải lại trang
+            const item = bbrData.find(i => i.id == id);
+            if (item) item.is_select = checked ? 1 : 0;
+            updateSelectedSummary();
+        } catch (err) {
+            console.error('Lỗi toggleSelect:', err);
+            alert('Không thể cập nhật trạng thái chọn.');
+        }
     }
 
     // --- HÀM XỬ LÝ IMPORT EXCEL ---

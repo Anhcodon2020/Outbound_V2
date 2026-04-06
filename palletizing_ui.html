@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Palletizing Simulator - AI Edition</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(17, 24, 39, 0.85);
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --secondary: #1f2937;
+            --secondary-hover: #374151;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --accent: #10b981;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; user-select: none; }
+        body { background-color: var(--bg-color); color: var(--text-main); overflow: hidden; display: flex; height: 100vh; width: 100vw; background: radial-gradient(circle at center, #1e293b 0%, #0b0f19 100%); }
+        #canvas-container { flex-grow: 1; position: relative; height: 100%; cursor: crosshair; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 24px; font-weight: 800; color: var(--primary); letter-spacing: 2px; z-index: 50; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        #sidebar { width: 440px; background: var(--panel-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-left: 1px solid var(--panel-border); display: flex; flex-direction: column; padding: 24px; z-index: 10; box-shadow: -10px 0 30px rgba(0,0,0,0.5); overflow-y: auto;}
+        .header { margin-bottom: 16px; position: relative; }
+        .header::after { content: ''; position: absolute; bottom: -8px; left: 0; width: 50px; height: 3px; background: var(--primary); border-radius: 2px; }
+        .header h1 { font-size: 26px; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 1px; background: linear-gradient(to right, #60a5fa, #3b82f6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        .header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+        
+        .form-panel { background: rgba(0,0,0,0.3); padding: 16px; border-radius: 12px; border: 1px solid var(--panel-border); margin-bottom: 12px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-control { width: 100%; padding: 8px 12px; border-radius: 6px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); font-family: 'Outfit', sans-serif; font-size: 14px; transition: all 0.2s; }
+        .form-control:focus { outline: none; border-color: var(--primary); background: rgba(59, 130, 246, 0.1); }
+
+        .controls { display: flex; gap: 12px; margin-bottom: 12px; }
+        .btn { flex: 1; padding: 12px 14px; border: none; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; justify-content: center; align-items: center; gap: 8px; }
+        .btn-primary { background: var(--primary); color: white; box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4); }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6); }
+        .btn-secondary { background: var(--secondary); color: white; border: 1px solid rgba(255, 255, 255, 0.05); }
+        .btn-secondary:hover { background: var(--secondary-hover); transform: translateY(-2px); }
+        .btn-accent { background: var(--accent); color: white; }
+        .btn-accent:hover { background: #059669; transform: translateY(-2px); }
+
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+        .stat-card { background: rgba(0, 0, 0, 0.4); border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; transition: border-color 0.3s; }
+        .stat-card:hover { border-color: var(--primary); }
+        .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 2px; }
+        .stat-value { font-size: 18px; font-weight: 800; color: white; display: flex; align-items: baseline; gap: 4px; }
+        .stat-unit { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+
+        .list-header { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 4px;}
+        
+        .order-list { max-height: 100px; overflow-y: auto; margin-bottom: 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 4px; }
+        .order-item { background: rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        .order-item .remove-btn { cursor: pointer; color: #ef4444; font-weight: bold; }
+
+        .carton-list { flex-grow: 1; min-height: 120px; overflow-y: auto; border-radius: 12px; padding-right: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .carton-item { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 10px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; }
+        .carton-item::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 4px; background: var(--primary); opacity: 0; transition: opacity 0.2s; }
+        .carton-item:hover { background: rgba(255, 255, 255, 0.08); transform: translateX(4px); }
+        .carton-item.active { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
+        .carton-item.active::before { opacity: 1; }
+        .carton-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .carton-name { font-weight: 600; font-size: 13px; }
+        .carton-layer { background: rgba(255, 255, 255, 0.1); padding: 2px 6px; border-radius: 12px; font-size: 10px; font-weight: 600; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; } ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    </style>
+</head>
+<body>
+    <div id="loading">INITIALIZING 3D ENGINE...</div>
+    <div id="canvas-container"></div>
+    
+    <div id="sidebar">
+        <div class="header">
+            <h1>Quy Hoạch Kho</h1>
+            <p>Smart Multi-Pallet + Manual Simulator</p>
+        </div>
+        
+        <div class="form-panel">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Loại Pallet (Ratio +5%)</label>
+                    <select id="inp-pallet" class="form-control">
+                        <option value="1.2">1.2 (1200x1000)</option>
+                        <option value="1.9">1.9 (1900x1000)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Luật Xếp Chồng</label>
+                    <select id="inp-mix" class="form-control">
+                        <option value="true">Tối ưu lấp đầy (Mix SKU)</option>
+                        <option value="false">Kiên quyết 1 Pallet/1 SKU</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div style="border-top: 1px solid rgba(255,255,255,0.05); margin: 6px 0; padding-top: 10px;">
+                <div class="form-group" style="margin-bottom: 8px;">
+                    <label>Tra cứu SKU</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="inp-sku" list="sku-list" placeholder="Gõ SKU..." class="form-control" style="flex:2">
+                        <datalist id="sku-list"></datalist>
+                        <input type="number" id="inp-qty" value="50" class="form-control" placeholder="SL" style="flex:1" title="Số lượng Auto">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label>Quy Cách (D x R x C x Nặng mm/kg)</label>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+                        <input type="number" id="inp-l" value="400" placeholder="L" class="form-control" title="Chiều dài">
+                        <input type="number" id="inp-w" value="300" placeholder="W" class="form-control" title="Chiều rộng">
+                        <input type="number" id="inp-h" value="200" placeholder="H" class="form-control" title="Chiều cao">
+                        <input type="number" id="inp-weight" value="7" placeholder="kg" step="0.1" class="form-control" title="Cân nặng">
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 4px; margin-top: 15px;">
+                <button id="btn-addOrder" class="btn btn-primary" style="flex: 1.5; font-size:11px;">➕ Add Order</button>
+                <button id="btn-addDropMode" class="btn btn-secondary" style="flex: 1.5; background:#8b5cf6; border-color:#7c3aed; font-size:11px;">🧰 Thả Bằng Tay</button>
+                <button id="btn-addManual" class="btn btn-secondary" style="flex: 1; border-color:#ef4444; color:#ef4444; font-size:11px;">🖖 1 Hộp</button>
+                <button id="btn-addPallet" class="btn btn-secondary" style="flex: 1; border-style: dashed; border-color:#f59e0b; color:#f59e0b; font-size:11px;">🟫 +Pallet</button>
+            </div>
+            
+            <div class="list-header" style="margin-top: 12px;">📦 Danh sách chờ xếp</div>
+            <div class="order-list" id="order-list-ui"></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-accent" id="btn-calc" style="flex: 2;">🚀 CHẠY QUY HOẠCH</button>
+            <button class="btn btn-secondary" id="btn-play" style="flex: 1;" disabled>
+                <span id="play-icon">▶</span> <span id="play-text">Auto Play</span>
+            </button>
+            <button class="btn btn-secondary" id="btn-clearAll" style="flex: 1;">🗑 Xóa All</button>
+        </div>
+
+        <!-- BẢNG ĐIỀU KHIỂN TƯƠNG TÁC THỦ CÔNG -->
+        <div id="interactive-panel" style="display: none; background: rgba(59, 130, 246, 0.1); padding: 12px; border-radius: 8px; border: 1px solid var(--primary); margin-bottom: 12px;">
+            <div style="font-size: 11px; font-weight: 600; color: #fff; margin-bottom: 8px; display: flex; justify-content: space-between;">
+                <span id="active-carton-title" style="color: #60a5fa;">Đang chọn: SKU (Khối Manual)</span>
+                <span style="cursor: pointer; padding: 0 4px;" onclick="app.deselectActive()">✖</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;">
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(-50, 0, 0)">⬅ Trái (-X)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #3b82f6;" onclick="app.rotateActive()">↻ Ngang (Z)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(50, 0, 0)">Phải (+X) ➡</button>
+                
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, -50, 0)">⬆ Tới (-Y)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, 0, 50)">⏫ Lên (+Z)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, 50, 0)">Lùi (+Y) ⬇</button>
+                
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #f59e0b;" onclick="app.flipActive()">⇅ Đứng (X)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, 0, -50)">Hạ (-Z) ⏬</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #10b981;" onclick="app.rollActive()">⟳ Úp (Y)</button>
+                
+                <button class="btn btn-secondary" id="btn-target" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); grid-column: 1 / span 2; border-color: #10b981;" onclick="app.toggleTargetingMode()"><span id="target-icon">📍</span> Quét Bắt Điểm</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); color: #ef4444;" onclick="app.removeActive()">🗑 Xóa Box</button>
+            </div>
+        </div>
+
+        <!-- THỐNG KÊ CBM -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-label">Tổng Pallet</span>
+                <div class="stat-value"><span id="lbl-pallets">0</span></div>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Tổng Sản Phẩm</span>
+                <div class="stat-value"><span id="lbl-loaded">0</span> <span class="stat-unit">thùng</span></div>
+            </div>
+            <div class="stat-card" style="border-color: #f59e0b;">
+                <span class="stat-label" style="color: #f59e0b;">Z-Max (MAX: 2600)</span>
+                <div class="stat-value"><span id="lbl-max-z">170</span> <span class="stat-unit">mm</span></div>
+            </div>
+            <div class="stat-card" style="grid-column: span 3; flex-direction: row; justify-content: space-between; align-items: center; border-color: var(--primary);">
+                <div>
+                    <span class="stat-label" style="color: var(--primary)">Thể Tích Hàng Hóa (CBM)</span>
+                    <div class="stat-value" style="color: var(--primary); font-size: 22px;"><span id="lbl-total-cbm">0.000</span> <span class="stat-unit">m³</span></div>
+                </div>
+                <div style="text-align: right;">
+                    <span class="stat-label">Trọng Lượng (Tấn)</span>
+                    <div class="stat-value"><span id="lbl-total-weight">0.00</span> <span class="stat-unit">tấn</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="font-size: 11px; text-align: center; margin-bottom: 12px; color: var(--text-muted);" id="lbl-status">
+            Đang tải dữ liệu Masterdata...
+        </div>
+
+        <div class="list-header">
+            <span>KIỆN LÊN PALLET TỪNG BƯỚC</span>
+        </div>
+        <div class="carton-list" id="carton-list"></div>
+    </div>
+    
+    <script>
+        class Palletizer {
+            constructor() {}
+            
+            // Hàm sinh mẫu lưới layer tối ưu (Chấp nhận Pallet Ratio +5% Overhang)
+            calculateBestLayerPatterns(palletL, palletW, boxL, boxW) {
+                let maxBoxes = 0;
+                let bestLayouts = [];
+                
+                // +5% allowance for overhang
+                const allowL = palletL * 1.05;
+                const allowW = palletW * 1.05;
+
+                const fillArea = (x0, y0, maxL, maxW, bl, bw, angle) => {
+                    const boxes = [];
+                    const nx = Math.floor(maxL / bl);
+                    const ny = Math.floor(maxW / bw);
+                    for (let i = 0; i < nx; i++) {
+                        for (let j = 0; j < ny; j++) {
+                            // Centered on its tile
+                            boxes.push({ x: x0 + i * bl + bl / 2.0, y: y0 + j * bw + bw / 2.0, angle });
+                        }
+                    }
+                    return boxes;
+                };
+
+                const step = Math.max(1, Math.floor(Math.min(boxL, boxW) / 2));
+                const addLayout = (layout) => {
+                    if (layout.length > maxBoxes) { maxBoxes = layout.length; bestLayouts = [layout]; } 
+                    else if (layout.length === maxBoxes && maxBoxes > 0) { bestLayouts.push(layout); }
+                };
+
+                for (let xSplit = 0; xSplit <= allowL; xSplit += step) {
+                    for (let leftRot of [false, true]) {
+                        for (let rightRot of [false, true]) {
+                            const leftBoxes = fillArea(0, 0, xSplit, allowW, leftRot?boxW:boxL, leftRot?boxL:boxW, leftRot ? 90 : 0);
+                            const rightBoxes = fillArea(xSplit, 0, allowL - xSplit, allowW, rightRot?boxW:boxL, rightRot?boxL:boxW, rightRot ? 90 : 0);
+                            addLayout([...leftBoxes, ...rightBoxes]);
+                        }
+                    }
+                }
+                for (let ySplit = 0; ySplit <= allowW; ySplit += step) {
+                    for (let topRot of [false, true]) {
+                        for (let btmRot of [false, true]) {
+                            const btmBoxes = fillArea(0, 0, allowL, ySplit, btmRot?boxW:boxL, btmRot?boxL:boxW, btmRot ? 90 : 0);
+                            const topBoxes = fillArea(0, ySplit, allowL, allowW - ySplit, topRot?boxW:boxL, topRot?boxL:boxW, topRot ? 90 : 0);
+                            addLayout([...btmBoxes, ...topBoxes]);
+                        }
+                    }
+                }
+                return bestLayouts.length ? bestLayouts : [];
+            }
+
+            planMultipleOrders(orderList, allowMix, palletType = "1.2") {
+                const palletLength = palletType === "1.9" ? 1900 : 1200;
+                const palletWidth = 1000;
+                const palletBaseHeight = 170;
+                const maxHeightLimit = 2600;
+                
+                let pallets = [];
+                let currentPallet = { boxes: [], zMax: palletBaseHeight, highestLayer: 0 };
+                
+                const pushPallet = () => {
+                    if (currentPallet.boxes.length > 0) pallets.push(currentPallet);
+                    currentPallet = { boxes: [], zMax: palletBaseHeight, highestLayer: 0 };
+                };
+
+                for (let order of orderList) {
+                    if (!allowMix && currentPallet.boxes.length > 0) {
+                        pushPallet();
+                    }
+                    
+                    const patterns = this.calculateBestLayerPatterns(palletLength, palletWidth, order.l, order.w);
+                    let remainQty = order.qty;
+                    const allowL = palletLength * 1.05;
+                    const allowW = palletWidth * 1.05;
+
+                    while (remainQty > 0) {
+                        let usableHeight = maxHeightLimit - currentPallet.zMax;
+                        let generated = [];
+                        
+                        if (usableHeight >= order.h && patterns.length > 0) {
+                            const maxByH = Math.floor(usableHeight / order.h);
+                            const zStart = currentPallet.zMax;
+                            let packed = 0;
+                            
+                            for (let layer = 0; layer < maxByH; layer++) {
+                                if (packed >= remainQty) break;
+                                const patIdx = layer % patterns.length;
+                                const zCenter = zStart + (layer * order.h) + order.h / 2.0;
+                                
+                                for (let item of patterns[patIdx]) {
+                                    if (packed >= remainQty) break;
+                                    let cx = item.x, cy = item.y;
+                                    if (patterns.length === 1 && layer % 2 === 1) { 
+                                        cx = allowL - item.x; cy = allowW - item.y;
+                                    }
+                                    
+                                    const cbm = (order.l * order.w * order.h) / 1000000000;
+                                    
+                                    generated.push({
+                                        id: Date.now() + Math.random(),
+                                        sku: order.sku, x: cx, y: cy, z: zCenter, angle: item.angle,
+                                        layer: currentPallet.highestLayer + layer + 1,
+                                        l: order.l, w: order.w, h: order.h, weight: order.weight, cbm: cbm
+                                    });
+                                    packed++;
+                                }
+                            }
+                        }
+                        
+                        if (generated.length === 0) {
+                            pushPallet();
+                            if (currentPallet.boxes.length === 0 && maxHeightLimit - currentPallet.zMax < order.h) {
+                                console.error("SKU is too tall to fit on a blank pallet");
+                                break; 
+                            }
+                        } else {
+                            currentPallet.boxes.push(...generated);
+                            remainQty -= generated.length;
+                            
+                            for (let b of generated) {
+                                let topEdge = b.z + (b.h / 2.0);
+                                if (topEdge > currentPallet.zMax) currentPallet.zMax = topEdge;
+                                if (b.layer > currentPallet.highestLayer) currentPallet.highestLayer = b.layer;
+                            }
+                        }
+                    }
+                }
+                
+                if (currentPallet.boxes.length > 0) pushPallet();
+                return pallets;
+            }
+        }
+
+        const app = {
+            palletizer: new Palletizer(),
+            masterdata: [],
+            orderList: [],
+            boxesData: [],
+            palletMeshes: [],
+            meshes: [],
+            skuColorMap: {},
+            isPlaying: false,
+            playInterval: null,
+            totalCartonsLoaded: 0,
+            activeBoxId: null,
+            isTargetingMode: false,
+            isDropMode: false,
+            
+            // DOM
+            inpPallet: document.getElementById('inp-pallet'),
+            inpMix: document.getElementById('inp-mix'),
+            inpSku: document.getElementById('inp-sku'),
+            skuList: document.getElementById('sku-list'),
+            inpL: document.getElementById('inp-l'),
+            inpW: document.getElementById('inp-w'),
+            inpH: document.getElementById('inp-h'),
+            inpWeight: document.getElementById('inp-weight'),
+            inpQty: document.getElementById('inp-qty'),
+            lblStatus: document.getElementById('lbl-status'),
+            orderListUI: document.getElementById('order-list-ui'),
+            
+            layerColors: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'],
+
+            init() {
+                this.initThreeJS();
+                this.bindEvents();
+                this.fetchMasterData();
+
+                // Make sure we have 1 empty pallet to start if we want to manual stack immediately
+                this.rebuildNPallets(1, 1200);
+
+                setTimeout(() => { document.getElementById('loading').style.display = 'none'; }, 500);
+            },
+
+            async fetchMasterData() {
+                try {
+                    const res = await fetch('/api/masterdata');
+                    if (res.ok) {
+                        this.masterdata = await res.json();
+                        this.skuList.innerHTML = '';
+                        this.masterdata.forEach(m => {
+                            const opt = document.createElement('option');
+                            opt.value = m.sku;
+                            opt.text = m.description || m.sku;
+                            this.skuList.appendChild(opt);
+                        });
+                        this.lblStatus.innerText = 'Đã tải Masterdata. Sẵn sàng.';
+                    }
+                } catch (e) {
+                    this.lblStatus.innerText = 'Lỗi tải Masterdata (Chạy chế độ Offline)';
+                }
+            },
+            
+            handleSkuChange() {
+                const sku = this.inpSku.value;
+                const match = this.masterdata.find(m => m.sku === sku);
+                if (match) {
+                    this.inpL.value = (match.length * 10) || 400;
+                    this.inpW.value = (match.width * 10) || 300;
+                    this.inpH.value = (match.height * 10) || 200;
+                    this.inpWeight.value = match.weight || 7;
+                    this.lblStatus.innerText = `Đã khớp thông số: ${sku}`;
+                    gsap.fromTo([this.inpL, this.inpW, this.inpH, this.inpWeight], {backgroundColor: "rgba(59,130,246,0.5)"}, {backgroundColor: "rgba(255,255,255,0.05)", duration: 1});
+                }
+            },
+
+            addOrder() {
+                const l = parseFloat(this.inpL.value); const w = parseFloat(this.inpW.value);
+                const h = parseFloat(this.inpH.value); const wt = parseFloat(this.inpWeight.value);
+                const qty = parseInt(this.inpQty.value);
+                const sku = this.inpSku.value || `BOX-${Math.floor(Math.random()*1000)}`;
+
+                if (!l || !w || !h || !qty || qty <= 0) {
+                    this.lblStatus.innerText = 'Dữ liệu Order không hợp lệ'; this.lblStatus.style.color = '#ef4444'; return;
+                }
+                
+                this.orderList.push({ id: Date.now(), sku, l, w, h, weight: wt, qty });
+                this.renderOrderList();
+            },
+
+            removeOrder(id) {
+                this.orderList = this.orderList.filter(o => o.id !== id);
+                this.renderOrderList();
+            },
+
+            renderOrderList() {
+                this.orderListUI.innerHTML = '';
+                this.orderList.forEach(order => {
+                    const div = document.createElement('div');
+                    div.className = 'order-item';
+                    div.innerHTML = `
+                        <span><strong>${order.sku}</strong> (SL: ${order.qty})</span>
+                        <span style="color:#aaa; font-size: 10px;">${order.l}x${order.w}x${order.h}</span>
+                        <span class="remove-btn" onclick="app.removeOrder(${order.id})">✖</span>
+                    `;
+                    this.orderListUI.appendChild(div);
+                });
+            },
+
+            // -------------------------------------------------------------
+            // MANUAL STACKING LOGIC
+            // -------------------------------------------------------------
+            findEmptySpotOnPallet(pIdx, boxL, boxW, boxH, pLen) {
+                const step = 10;
+                let bestZ = 999999;
+                let bestSpot = { x: pLen/2, y: 500, z: 170 + boxH/2 };
+
+                for(let cx = boxL/2; cx <= pLen - boxL/2 + 2; cx += step) {
+                    for(let cy = boxW/2; cy <= 1000 - boxW/2 + 2; cy += step) {
+                        
+                        const tMinX = cx - boxL/2 + 1; const tMaxX = cx + boxL/2 - 1;
+                        const tMinY = cy - boxW/2 + 1; const tMaxY = cy + boxW/2 - 1;
+                        
+                        let supportZ = 170; // ground floor
+                        
+                        for(let b of this.boxesData) {
+                            if (b.pIdx !== pIdx || b.deleted) continue;
+                            
+                            const bw = b.angle === 0 ? b.w : b.l;
+                            const bl = b.angle === 0 ? b.l : b.w;
+                            const bMinX = b.x - bl/2; const bMaxX = b.x + bl/2;
+                            const bMinY = b.y - bw/2; const bMaxY = b.y + bw/2;
+                            
+                            if (tMinX < bMaxX && tMaxX > bMinX && tMinY < bMaxY && tMaxY > bMinY) {
+                                let bTop = b.z + b.h/2;
+                                if (bTop > supportZ) supportZ = bTop;
+                            }
+                        }
+                        
+                        if (supportZ < bestZ) {
+                            bestZ = supportZ;
+                            bestSpot = { x: cx, y: cy, z: supportZ + boxH/2 };
+                        }
+                        
+                        if (bestZ === 170) return bestSpot;
+                    }
+                }
+                
+                if (bestZ > 170) bestSpot.z += 2; // subtle float above boxes
+                return bestSpot;
+            },
+
+            addManualBox() {
+                const l = parseFloat(this.inpL.value) || 400; const w = parseFloat(this.inpW.value) || 300;
+                const h = parseFloat(this.inpH.value) || 200; const wt = parseFloat(this.inpWeight.value) || 5;
+                const sku = this.inpSku.value || `MANUAL-${Math.floor(Math.random()*1000)}`;
+                const cbm = (l * w * h) / 1000000000;
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+
+                const spot = this.findEmptySpotOnPallet(0, l, w, h, pLen);
+
+                const boxData = {
+                    id: Date.now() + Math.random(),
+                    sku: sku,
+                    x: spot.x,
+                    y: spot.y,     
+                    z: spot.z, 
+                    angle: 0,
+                    layer: 0,
+                    l: l, w: w, h: h, weight: wt, cbm: cbm,
+                    pIdx: 0,     // assume pallet 0 for manual drops
+                    offsetX: 0,
+                    isManual: true
+                };
+
+                // Add to flattened array bypassing auto plan
+                this.boxesData.push(boxData);
+                this.drawNextCarton(true); // draw immediately
+                this.activateCarton(boxData.id);
+                this.lblStatus.innerText = 'Đã thả 1 kiện hàng thủ công. Kéo thả để di chuyển.';
+            },
+
+            toggleDropMode() {
+                this.isDropMode = !this.isDropMode;
+                const btn = document.getElementById('btn-addDropMode');
+                if (this.isDropMode) {
+                    btn.style.background = '#10b981'; // Green
+                    btn.innerHTML = '✅ Đang bật Thả Tay (Click để xếp)';
+                    this.container.style.cursor = 'crosshair';
+                    this.lblStatus.innerText = 'Click lên Pallet hoặc các thùng khác để xếp hàng thủ công.';
+                } else {
+                    btn.style.background = '#8b5cf6';
+                    btn.innerHTML = '🧰 Thả Bằng Tay';
+                    this.container.style.cursor = 'default';
+                    this.lblStatus.innerText = 'Đã tắt chế độ xếp hàng thủ công.';
+                }
+            },
+
+            addManualBoxAtPoint(worldPoint) {
+                const l = parseFloat(this.inpL.value) || 400; const w = parseFloat(this.inpW.value) || 300;
+                const h = parseFloat(this.inpH.value) || 200; const wt = parseFloat(this.inpWeight.value) || 5;
+                const sku = this.inpSku.value || `MANUAL-${Math.floor(Math.random()*1000)}`;
+                const cbm = (l * w * h) / 1000000000;
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+
+                const boxData = {
+                    id: Date.now() + Math.random(),
+                    sku: sku,
+                    x: worldPoint.x + (pLen/2),
+                    y: worldPoint.z + 500,     
+                    z: worldPoint.y + h/2, 
+                    angle: 0,
+                    layer: 0,
+                    l: l, w: w, h: h, weight: wt, cbm: cbm,
+                    pIdx: 0,
+                    offsetX: 0,
+                    isManual: true
+                };
+
+                // Add to flattened array bypassing auto plan
+                this.boxesData.push(boxData);
+                this.drawNextCarton(true); 
+                
+                // Snap using existing logic dynamically to prevent overlaps
+                this.activeBoxId = boxData.id;
+                this.snapActiveToPoint(worldPoint);
+                this.deselectActive(); // Quickly deselect to allow more drops
+            },
+
+            activateCarton(boxId) {
+                this.deselectActive();
+                this.activeBoxId = boxId;
+                
+                const mesh = this.meshes.find(m => m.userData.id === boxId);
+                const data = this.boxesData.find(b => b.id === boxId);
+                if (!mesh || !data) return;
+
+                document.getElementById('interactive-panel').style.display = 'block';
+                document.getElementById('active-carton-title').innerText = `Đang chọn: ${data.sku}`;
+                mesh.material.emissive.setHex(0x444444);
+                
+                gsap.to(this.controls.target, { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z, duration: 0.5 });
+            },
+
+            deselectActive() {
+                if (this.activeBoxId) {
+                    const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                    if (mesh) mesh.material.emissive.setHex(0x000000);
+                }
+                this.activeBoxId = null;
+                document.getElementById('interactive-panel').style.display = 'none';
+            },
+
+            toggleTargetingMode(forceState = null) {
+                this.isTargetingMode = forceState !== null ? forceState : !this.isTargetingMode;
+                const btn = document.getElementById('btn-target');
+                if (this.isTargetingMode) {
+                    btn.style.background = '#059669'; // Green active state
+                    btn.innerHTML = '<span id="target-icon">📍</span> Quét... (Click Đích)';
+                    this.container.style.cursor = 'crosshair';
+                } else {
+                    btn.style.background = 'rgba(0,0,0,0.5)';
+                    btn.innerHTML = '<span id="target-icon">📍</span> Quét Bắt Điểm';
+                    this.container.style.cursor = 'default';
+                }
+            },
+
+            snapActiveToPoint(worldPoint) {
+                const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                const data = this.boxesData.find(b => b.id === this.activeBoxId);
+                if (!mesh || !data) return;
+
+                const bbox = new THREE.Box3().setFromObject(mesh);
+                const halfVisualHeight = (bbox.max.y - bbox.min.y) / 2;
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                
+                const finalY = worldPoint.y + halfVisualHeight;
+                mesh.position.set(worldPoint.x, finalY, worldPoint.z);
+                mesh.updateMatrixWorld(true);
+                
+                const oh = this.checkOverhangInfo(mesh);
+                if (oh.isFatal) {
+                     const ok = confirm(`Cảnh báo: Kiện hàng thả lồi ra ngoài mép Pallet tới ${oh.amount.toFixed(0)}mm. Xác nhận đặt tràn mép?`);
+                     if (!ok) {
+                         const currentX = data.x - (pLen/2) + data.offsetX;
+                         const currentY = data.z;
+                         const currentZ = data.y - 500;
+                         mesh.position.set(currentX, currentY, currentZ);
+                         return; 
+                     }
+                }
+                
+                gsap.fromTo(mesh.position, {y: finalY + 400}, {x: worldPoint.x, y: finalY, z: worldPoint.z, duration: 0.3, ease: "power2.out"});
+                
+                data.x = worldPoint.x + (pLen/2) - data.offsetX;
+                data.z = finalY;
+                data.y = worldPoint.z + 500;
+                
+                this.updateStats();
+            },
+
+            addManualPallet() {
+                const currentNum = this.palletMeshes ? this.palletMeshes.length : 0;
+                const newNum = Math.max(1, currentNum) + 1;
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                this.rebuildNPallets(newNum, pLen);
+                this.updateStats();
+            },
+
+            checkCollisionWithGravity(mesh, dx, dy, dz) {
+                const origX = mesh.position.x;
+                const origY = mesh.position.y;
+                const origZ = mesh.position.z;
+                
+                const origBBox = new THREE.Box3().setFromObject(mesh);
+                const origBottom = origBBox.min.y;
+
+                mesh.position.set(origX + dx, origY + dz, origZ + dy);
+                mesh.updateMatrixWorld(true);
+                
+                let blocked = false;
+                const newBBox = new THREE.Box3().setFromObject(mesh);
+                newBBox.expandByScalar(-1); // tolerance
+                
+                if (newBBox.min.y < 170) blocked = true;
+                
+                let highestSupportY = 170; 
+                
+                for(let m of this.meshes) {
+                    if (m === mesh || m.userData.deleted) continue;
+                    
+                    const mBBox = new THREE.Box3().setFromObject(m);
+                    mBBox.expandByScalar(-1);
+                    
+                    if (newBBox.intersectsBox(mBBox)) {
+                        blocked = true;
+                    }
+                    
+                    if (dx !== 0 || dy !== 0) { // lateral
+                         if (newBBox.max.x > mBBox.min.x && newBBox.min.x < mBBox.max.x &&
+                             newBBox.max.z > mBBox.min.z && newBBox.min.z < mBBox.max.z) {
+                               if (mBBox.max.y <= origBottom + 5) { 
+                                   if (mBBox.max.y > highestSupportY) highestSupportY = mBBox.max.y;
+                               }
+                         }
+                    }
+                }
+                
+                mesh.position.set(origX, origY, origZ);
+                mesh.updateMatrixWorld(true);
+                
+                return { blocked, highestSupportY };
+            },
+
+            checkOverhangInfo(mesh) {
+                const bBox = new THREE.Box3().setFromObject(mesh);
+                bBox.expandByScalar(-1);
+                let bestMatch = null;
+                
+                for(let pMesh of this.palletMeshes) {
+                     const pBox = new THREE.Box3().setFromObject(pMesh);
+                     let overX = 0; let overZ = 0;
+                     if (bBox.min.x < pBox.min.x) overX = Math.max(overX, pBox.min.x - bBox.min.x);
+                     if (bBox.max.x > pBox.max.x) overX = Math.max(overX, bBox.max.x - pBox.max.x);
+                     if (bBox.min.z < pBox.min.z) overZ = Math.max(overZ, pBox.min.z - bBox.min.z);
+                     if (bBox.max.z > pBox.max.z) overZ = Math.max(overZ, bBox.max.z - pBox.max.z);
+                     
+                     const totalOverhang = Math.max(overX, overZ);
+                     if (!bestMatch || totalOverhang < bestMatch.amount) {
+                         const pLen = pBox.max.x - pBox.min.x;
+                         const tolX = pLen * 0.05;
+                         const tolZ = 1000 * 0.05;
+                         bestMatch = { amount: totalOverhang, isFatal: (overX > tolX || overZ > tolZ) };
+                     }
+                }
+                return bestMatch || { amount: 0, isFatal: false };
+            },
+
+            nudgeCarton(dx, dy, dz) {
+                if (!this.activeBoxId) return;
+                const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                const data = this.boxesData.find(b => b.id === this.activeBoxId);
+                if (!mesh || !data) return;
+                
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                gsap.killTweensOf(mesh.position);
+                const trueX = data.x - (pLen/2) + data.offsetX;
+                const trueY = data.z;
+                const trueZ = data.y - 500;
+                mesh.position.set(trueX, trueY, trueZ);
+                mesh.updateMatrixWorld(true);
+                
+                let r = this.checkCollisionWithGravity(mesh, dx, dy, dz);
+                let wasRotatedToFit = false;
+                
+                if (r.blocked) {
+                    const origRot = mesh.rotation.y;
+                    mesh.rotation.y = origRot === 0 ? (Math.PI / 2) : 0;
+                    mesh.updateMatrixWorld(true);
+                    
+                    let rRot = this.checkCollisionWithGravity(mesh, dx, dy, dz);
+                    if (!rRot.blocked) {
+                        data.angle = data.angle === 0 ? 90 : 0;
+                        r = rRot;
+                        wasRotatedToFit = true;
+                    } else {
+                        mesh.rotation.y = origRot;
+                        mesh.updateMatrixWorld(true);
+                    }
+                }
+                
+                if (r.blocked) {
+                    gsap.to(mesh.position, {
+                        x: trueX + (dx>0?5:(dx<0?-5:0)), 
+                        y: trueY + (dz>0?5:(dz<0?-5:0)),
+                        z: trueZ + (dy>0?5:(dy<0?-5:0)),
+                        yoyo: true, repeat: 1, duration: 0.05 
+                    });
+                    return;
+                }
+                
+                let newX = trueX + dx;
+                let newZ = trueZ + dy;
+                let newY = trueY + dz;
+                
+                if (dx !== 0 || dy !== 0) {
+                    const bbox = new THREE.Box3().setFromObject(mesh);
+                    const halfY = (bbox.max.y - bbox.min.y) / 2;
+                    const dropY = r.highestSupportY + halfY + 0.1; 
+                    if (newY > dropY) newY = dropY;
+                }
+                
+                mesh.position.set(newX, newY, newZ);
+                mesh.updateMatrixWorld(true);
+                const oh = this.checkOverhangInfo(mesh);
+                if (oh.isFatal) {
+                     const ok = confirm(`Cảnh báo: Kiện hàng lồi ra ngoài mép Pallet tới ${oh.amount.toFixed(0)}mm (Vượt trần 5%). Đặt ép lấn ranh?`);
+                     if (!ok) {
+                          mesh.position.set(trueX, trueY, trueZ);
+                          if (wasRotatedToFit) {
+                              mesh.rotation.y = data.angle === 90 ? 0 : (Math.PI/2);
+                              data.angle = data.angle === 90 ? 0 : 90;
+                          }
+                          return;
+                     } // else keep going
+                }
+                
+                mesh.position.set(wasRotatedToFit ? trueX : mesh.position.x, trueY, trueZ);
+                gsap.to(mesh.position, { x: newX, y: newY, z: newZ, duration: 0.2, ease:"power1.out" });
+                
+                data.x = newX + (pLen/2) - data.offsetX;
+                data.z = newY;
+                data.y = newZ + 500;
+                
+                this.updateStats();
+            },
+
+            rotateActive() {
+                if (!this.activeBoxId) return;
+                const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                const data = this.boxesData.find(b => b.id === this.activeBoxId);
+                if (!mesh || !data) return;
+                
+                data.angle = data.angle === 0 ? 90 : 0;
+                gsap.to(mesh.rotation, { y: mesh.rotation.y + (Math.PI / 2), duration: 0.3, ease: "back.out(1.5)" });
+                this.updateStats();
+            },
+
+            flipActive() {
+                if (!this.activeBoxId) return;
+                const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                const data = this.boxesData.find(b => b.id === this.activeBoxId);
+                if (!mesh || !data) return;
+                
+                data.isFlipped = !data.isFlipped;
+                const targetRotX = data.isFlipped ? (mesh.rotation.x + (Math.PI / 2)) : (mesh.rotation.x - (Math.PI / 2));
+                gsap.to(mesh.rotation, { x: targetRotX, duration: 0.3, ease: "back.out(1.5)" });
+                this.updateStats();
+            },
+
+            rollActive() {
+                if (!this.activeBoxId) return;
+                const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                const data = this.boxesData.find(b => b.id === this.activeBoxId);
+                if (!mesh || !data) return;
+                
+                data.isRolled = !data.isRolled;
+                const targetRotZ = data.isRolled ? (mesh.rotation.z + (Math.PI / 2)) : (mesh.rotation.z - (Math.PI / 2));
+                gsap.to(mesh.rotation, { z: targetRotZ, duration: 0.3, ease: "back.out(1.5)" });
+                this.updateStats();
+            },
+
+            removeActive() {
+                if (!this.activeBoxId) return;
+                const meshIdx = this.meshes.findIndex(m => m.userData.id === this.activeBoxId);
+                const dataIdx = this.boxesData.findIndex(b => b.id === this.activeBoxId);
+                
+                if (meshIdx !== -1) {
+                    const mesh = this.meshes[meshIdx];
+                    this.scene.remove(mesh);
+                    mesh.geometry.dispose(); mesh.material.dispose();
+                    this.meshes.splice(meshIdx, 1);
+                }
+                if (dataIdx !== -1) {
+                    this.boxesData[dataIdx].deleted = true; // Mark deleted to remove from stats
+                }
+                
+                this.deselectActive();
+                this.updateStats();
+            },
+
+            // -------------------------------------------------------------
+            // RENDERING & AUTO PLAN LOGIC
+            // -------------------------------------------------------------
+
+            rebuildNPallets(numPallets, forcedLength) {
+                if (this.palletMeshes) { this.palletMeshes.forEach(m => { this.scene.remove(m); m.geometry.dispose(); }); }
+                this.palletMeshes = [];
+                
+                const palletWood = new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 0.9, metalness: 0.1 });
+                const palletGeo = new THREE.BoxGeometry(forcedLength, 170, 1000);
+                const gap = forcedLength === 1900 ? 2200 : 1500; 
+
+                for (let i = 0; i < numPallets; i++) {
+                    const mesh = new THREE.Mesh(palletGeo, palletWood);
+                    mesh.position.set(i * gap, 85, 0); 
+                    mesh.receiveShadow = true; mesh.castShadow = true;
+                    this.scene.add(mesh);
+                    this.palletMeshes.push(mesh);
+                }
+                
+                if (numPallets > 1) {
+                    const centerPoint = ((numPallets - 1) * gap) / 2;
+                    gsap.to(this.controls.target, { x: centerPoint, duration: 1 });
+                    gsap.to(this.camera.position, { x: centerPoint, z: 4000 + (numPallets * 500), duration: 1 });
+                } else {
+                    gsap.to(this.controls.target, { x: 0, duration: 1 });
+                }
+            },
+
+            runAutoPlan() {
+                if (this.orderList.length === 0) {
+                    this.lblStatus.innerText = 'Vui lòng thêm order trước khi quy hoạch!'; return;
+                }
+
+                this.resetView(); 
+                if (this.isPlaying) this.togglePlay();
+
+                const pType = this.inpPallet.value;
+                const pLen = pType === "1.9" ? 1900 : 1200;
+                const allowMix = this.inpMix.value === "true";
+
+                const resultPallets = this.palletizer.planMultipleOrders(this.orderList, allowMix, pType);
+                this.rebuildNPallets(Math.max(1, resultPallets.length), pLen);
+
+                this.boxesData = [];
+                const gap = pLen === 1900 ? 2200 : 1500;
+
+                resultPallets.forEach((palletObj, pIdx) => {
+                    const offsetX = pIdx * gap;
+                    palletObj.boxes.forEach(b => {
+                        b.pIdx = pIdx;
+                        b.offsetX = offsetX;
+                        this.boxesData.push(b);
+                    });
+                });
+
+                document.getElementById('btn-play').disabled = false;
+                this.lblStatus.innerText = `Đã thiết kế xong: ${resultPallets.length} Pallet (${this.boxesData.length} kiện). Đang mô phỏng...`;
+                this.togglePlay(true);
+            },
+            
+            initThreeJS() {
+                this.container = document.getElementById('canvas-container');
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(40, this.container.clientWidth / this.container.clientHeight, 1, 10000);
+                this.camera.position.set(2000, 2500, 3000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.container.appendChild(this.renderer.domElement);
+                
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.05;
+                this.controls.target.set(0, 600, 0);
+                this.controls.maxPolarAngle = Math.PI / 2 + 0.1;
+                
+                this.scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+                const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+                dirLight.position.set(1500, 4000, 2000);
+                dirLight.castShadow = true;
+                dirLight.shadow.mapSize.width = 4096; dirLight.shadow.mapSize.height = 4096;
+                dirLight.shadow.camera.left = -4000; dirLight.shadow.camera.right = 4000; dirLight.shadow.camera.top = 4000; dirLight.shadow.camera.bottom = -4000;
+                this.scene.add(dirLight);
+
+                const floor = new THREE.Mesh(new THREE.PlaneGeometry(16000, 16000), new THREE.ShadowMaterial({ opacity: 0.3 }));
+                floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; this.scene.add(floor);
+                const gridHelper = new THREE.GridHelper(10000, 100, '#1f2937', '#111827');
+                gridHelper.position.y = 1; this.scene.add(gridHelper);
+                
+                const animate = () => { requestAnimationFrame(animate); this.controls.update(); this.renderer.render(this.scene, this.camera); };
+                animate();
+
+                // -------------------------------------------------------------
+                // RAYCASTER IMPLEMENTATION FOR SELECTION
+                // -------------------------------------------------------------
+                this.raycaster = new THREE.Raycaster();
+                this.mouse = new THREE.Vector2();
+
+                this.container.addEventListener('click', (e) => {
+                    const rect = this.container.getBoundingClientRect();
+                    this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                    this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                    this.raycaster.setFromCamera(this.mouse, this.camera);
+                    
+                    if (this.isTargetingMode && this.activeBoxId) {
+                        const scanTargets = [...this.palletMeshes, ...this.meshes, floor];
+                        const filteredTargets = scanTargets.filter(m => m.userData.id !== this.activeBoxId);
+                        
+                        const intersects = this.raycaster.intersectObjects(filteredTargets);
+                        if (intersects.length > 0) {
+                            const hit = intersects[0];
+                            this.snapActiveToPoint(hit.point);
+                            this.toggleTargetingMode(false);
+                            return; 
+                        }
+                    }
+
+                    if (this.isDropMode) {
+                        const scanTargets = [...this.palletMeshes, ...this.meshes, floor];
+                        const intersects = this.raycaster.intersectObjects(scanTargets);
+                        if (intersects.length > 0) {
+                            const hit = intersects[0];
+                            this.addManualBoxAtPoint(hit.point);
+                        }
+                        return;
+                    }
+
+                    const intersects = this.raycaster.intersectObjects(this.meshes);
+                    if (intersects.length > 0) {
+                        const hitMesh = intersects[0].object;
+                        if (hitMesh.userData.id) {
+                            if (this.isTargetingMode) this.toggleTargetingMode(false);
+                            this.activateCarton(hitMesh.userData.id);
+                        }
+                    } else {
+                        const floorIntersects = this.raycaster.intersectObject(floor);
+                        if (floorIntersects.length > 0) {
+                            if (this.isTargetingMode) this.toggleTargetingMode(false);
+                            this.deselectActive();
+                        }
+                    }
+                });
+
+                window.addEventListener('resize', () => { this.camera.aspect = this.container.clientWidth / this.container.clientHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(this.container.clientWidth, this.container.clientHeight); });
+            },
+            
+            bindEvents() {
+                document.getElementById('btn-addOrder').addEventListener('click', () => this.addOrder());
+                document.getElementById('btn-addManual').addEventListener('click', () => this.addManualBox());
+                document.getElementById('btn-addDropMode').addEventListener('click', () => this.toggleDropMode());
+                document.getElementById('btn-addPallet').addEventListener('click', () => this.addManualPallet());
+                document.getElementById('btn-calc').addEventListener('click', () => this.runAutoPlan());
+                document.getElementById('btn-clearAll').addEventListener('click', () => this.resetApp());
+                document.getElementById('btn-play').addEventListener('click', () => this.togglePlay());
+                this.inpSku.addEventListener('change', () => this.handleSkuChange());
+            },
+
+            resetApp() {
+                this.orderList = [];
+                this.renderOrderList();
+                this.resetView();
+                this.boxesData = [];
+                this.updateStats();
+                this.rebuildNPallets(1, 1200); // Back to 1 empty pallet
+                document.getElementById('btn-play').disabled = true;
+            },
+
+            resetView() {
+                this.deselectActive();
+                this.meshes.forEach(m => { this.scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+                this.meshes = [];
+                this.totalCartonsLoaded = 0;
+                document.getElementById('carton-list').innerHTML = '';
+            },
+            
+            togglePlay(forcePlay=null) {
+                if (forcePlay !== null) this.isPlaying = !forcePlay; 
+                if (this.totalCartonsLoaded >= this.boxesData.length && !this.isPlaying) return;
+                
+                this.isPlaying = !this.isPlaying;
+                const btn = document.getElementById('btn-play');
+                const txt = document.getElementById('play-text');
+                const icn = document.getElementById('play-icon');
+                
+                if (this.isPlaying) {
+                    icn.innerText = '⏸'; txt.innerText = 'Pause'; btn.style.background = '#f59e0b';
+                    this.playInterval = setInterval(() => {
+                        if (this.totalCartonsLoaded >= this.boxesData.length) {
+                            this.togglePlay(); this.lblStatus.innerText = 'Hoàn tất mô phỏng Palletizing!';
+                        } else {
+                            this.drawNextCarton();
+                        }
+                    }, 40); 
+                } else {
+                    icn.innerText = '▶'; txt.innerText = 'Resume'; btn.style.background = 'var(--secondary)';
+                    clearInterval(this.playInterval);
+                }
+            },
+            
+            drawNextCarton(isManual = false) {
+                const idx = isManual ? (this.boxesData.length - 1) : this.totalCartonsLoaded;
+                const data = this.boxesData[idx];
+                if (!data || data.deleted) return;
+                
+                const w = data.angle === 0 ? data.l : data.w;
+                const d = data.angle === 0 ? data.w : data.l;
+                const geo = new THREE.BoxGeometry(w - 2, data.h - 2, d - 2); 
+                
+                if (!this.skuColorMap[data.sku]) {
+                    const hue = Math.floor(Math.random() * 360);
+                    const c = new THREE.Color();
+                    c.setHSL(hue/360, 0.8, 0.55);
+                    this.skuColorMap[data.sku] = '#' + c.getHexString();
+                }
+                const hexColor = this.skuColorMap[data.sku];
+                
+                const mat = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.6, metalness: 0.2 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })));
+                mesh.castShadow = true; mesh.receiveShadow = true;
+                
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                
+                // Trục tọa độ Threejs: X (trái/phải), Y (lên/xuống = Z của thùng), Z (chiều sâu = Y của thùng)
+                mesh.position.set(data.x - (pLen/2) + data.offsetX, data.z, data.y - 500);
+                mesh.rotation.y = data.angle === 90 ? (Math.PI / 2) : 0;
+                
+                mesh.userData = { id: data.id }; // Attach ID for raycasting
+                
+                this.scene.add(mesh);
+                this.meshes.push(mesh);
+                
+                gsap.from(mesh.position, { y: data.z + 800, duration: 0.5, ease: "power2.out" });
+
+                this.addToListUI(data, hexColor);
+                if (!isManual) this.totalCartonsLoaded++;
+                this.updateStats();
+            },
+            
+            addToListUI(data, colorHex) {
+                const div = document.createElement('div');
+                div.className = 'carton-item';
+                div.id = `ui-item-${data.id}`;
+                div.innerHTML = `
+                    <div class="carton-title">
+                        <span class="carton-name" style="color: ${colorHex}">[P${data.pIdx+1}] ${data.sku}</span>
+                        <span class="carton-layer" style="color: ${colorHex}; border: 1px solid ${colorHex}55">${data.isManual ? 'MANUAL' : 'L' + data.layer}</span>
+                    </div>
+                `;
+                div.onclick = () => this.activateCarton(data.id);
+                document.getElementById('carton-list').prepend(div);
+            },
+            
+            updateStats() {
+                let currentCount = 0;
+                let currentWeight = 0;
+                let totalCBM = 0;
+                let highestPalletIndex = -1;
+                let maxZ = 170; // Sàn gỗ cơ bản
+                
+                for(let i = 0; i < this.boxesData.length; i++) {
+                    const b = this.boxesData[i];
+                    // Count if not deleted and (either loaded via auto-play or is manual)
+                    if (b && !b.deleted && (i < this.totalCartonsLoaded || b.isManual)) {
+                        currentCount++;
+                        currentWeight += b.weight || 0;
+                        totalCBM += (b.cbm || 0);
+                        if (b.pIdx > highestPalletIndex) highestPalletIndex = b.pIdx;
+                        
+                        let topOfBox = b.z + (b.h / 2);
+                        if (topOfBox > maxZ) maxZ = topOfBox;
+                    }
+                }
+                
+                const displayPallets = Math.max(this.palletMeshes ? this.palletMeshes.length : 1, highestPalletIndex + 1);
+                document.getElementById('lbl-pallets').innerText = displayPallets;
+                document.getElementById('lbl-loaded').innerText = currentCount;
+                document.getElementById('lbl-total-cbm').innerText = totalCBM.toFixed(3);
+                document.getElementById('lbl-total-weight').innerText = (currentWeight / 1000).toFixed(2);
+                
+                const zLabel = document.getElementById('lbl-max-z');
+                zLabel.innerText = Math.floor(maxZ);
+                if (maxZ > 2600) { zLabel.style.color = '#ef4444'; } else { zLabel.style.color = 'white'; }
+            }
+        };
+
+        window.addEventListener('DOMContentLoaded', () => { app.init(); });
+    </script>
+</body>
+</html>

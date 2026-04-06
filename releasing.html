@@ -90,6 +90,7 @@
         </select>
         <button onclick="resetChecks()" class="btn-import" style="margin-left: 10px; background-color: #6c757d;">🔄 Reset Check</button>
         <button onclick="deleteUnchecked()" class="btn-import" style="margin-left: 10px; background-color: #dc3545;">🗑️ Xóa mục chưa check</button>
+        <button onclick="deleteAll()" class="btn-import" style="margin-left: 10px; background-color: #b91c1c;">🗑️ Xóa tất cả</button>
     </div>
 
     <div class="tabs">
@@ -427,6 +428,26 @@
                 alert('Lỗi: ' + data.error);
             } else {
                 alert(`Đã xóa ${data.affected} dòng.`);
+                // Tải lại dữ liệu để làm mới bảng
+                location.reload();
+            }
+        })
+        .catch(err => alert('Lỗi kết nối: ' + err));
+    }
+
+    // --- HÀM XÓA TẤT CẢ DỮ LIỆU ---
+    function deleteAll() {
+        if (!confirm('CẢNH BÁO: Bạn có chắc chắn muốn xóa TOÀN BỘ dữ liệu trong danh sách Releasing không?\nHành động này không thể hoàn tác.')) return;
+        
+        fetch('/api/releasing/delete_all', {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                alert('Lỗi: ' + data.error);
+            } else {
+                alert(`Đã xóa sạch dữ liệu (${data.affected} dòng).`);
                 // Tải lại dữ liệu để làm mới bảng
                 location.reload();
             }
