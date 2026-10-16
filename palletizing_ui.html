@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
@@ -104,6 +104,24 @@
                     </select>
                 </div>
             </div>
+
+            <div class="form-row" style="margin-top: 6px;">
+                <div class="form-group">
+                    <label>AI Tối Ưu</label>
+                    <select id="inp-ai-mode" class="form-control">
+                        <option value="balance">Smart Balance (Khuyến nghị)</option>
+                        <option value="min_pallet">Ưu tiên ít pallet nhất</option>
+                        <option value="stable">Ưu tiên cân bằng chiều cao</option>
+                        <option value="off">Tắt AI (Rule-based)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mục Tiêu</label>
+                    <div class="form-control" style="display:flex; align-items:center; min-height: 37px; color: var(--text-muted);">
+                        AI sẽ thử nhiều chiến lược và tự chọn phương án tốt nhất.
+                    </div>
+                </div>
+            </div>
             
             <div style="border-top: 1px solid rgba(255,255,255,0.05); margin: 6px 0; padding-top: 10px;">
                 <div class="form-group" style="margin-bottom: 8px;">
@@ -124,12 +142,26 @@
                         <input type="number" id="inp-weight" value="7" placeholder="kg" step="0.1" class="form-control" title="Cân nặng">
                     </div>
                 </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label>Hướng Thả Hàng Thủ Công</label>
+                    <select id="inp-orient" class="form-control">
+                        <option value="0">Dọc (L // Chiều Dài Pallet)</option>
+                        <option value="90">Ngang (W // Chiều Dài Pallet)</option>
+                    </select>
+                    <div id="ghost-info" style="margin-top:6px; font-size:12px; color:#60a5fa;">Xem trước: 0° · Dọc</div>
+                </div>
                 
                 <div style="display: flex; gap: 4px; margin-top: 15px;">
                 <button id="btn-addOrder" class="btn btn-primary" style="flex: 1.5; font-size:11px;">➕ Add Order</button>
                 <button id="btn-addDropMode" class="btn btn-secondary" style="flex: 1.5; background:#8b5cf6; border-color:#7c3aed; font-size:11px;">🧰 Thả Bằng Tay</button>
                 <button id="btn-addManual" class="btn btn-secondary" style="flex: 1; border-color:#ef4444; color:#ef4444; font-size:11px;">🖖 1 Hộp</button>
                 <button id="btn-addPallet" class="btn btn-secondary" style="flex: 1; border-style: dashed; border-color:#f59e0b; color:#f59e0b; font-size:11px;">🟫 +Pallet</button>
+            </div>
+            
+            <div style="display: flex; gap: 4px; margin-top: 6px;">
+                <button id="btn-copyLayer" class="btn btn-secondary" style="flex: 1; background:#0ea5e9; border-color:#0284c7; font-size:11px;">📑 Copy Lớp Trên</button>
+                <button id="btn-copyBlock" class="btn btn-secondary" style="flex: 1; background:#6366f1; border-color:#4f46e5; font-size:11px;">🏢 Copy Cả Khối</button>
             </div>
             
             <div class="list-header" style="margin-top: 12px;">📦 Danh sách chờ xếp</div>
@@ -152,19 +184,20 @@
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;">
                 <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(-50, 0, 0)">⬅ Trái (-X)</button>
-                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #3b82f6;" onclick="app.rotateActive()">↻ Ngang (Z)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #3b82f6;" onclick="app.rotateActive()">↻ Ngang (R)</button>
                 <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(50, 0, 0)">Phải (+X) ➡</button>
                 
                 <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, -50, 0)">⬆ Tới (-Y)</button>
                 <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, 0, 50)">⏫ Lên (+Z)</button>
                 <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, 50, 0)">Lùi (+Y) ⬇</button>
                 
-                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #f59e0b;" onclick="app.flipActive()">⇅ Đứng (X)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #f59e0b;" onclick="app.flipActive()">⇅ Đứng (F)</button>
                 <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5);" onclick="app.nudgeCarton(0, 0, -50)">Hạ (-Z) ⏬</button>
-                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #10b981;" onclick="app.rollActive()">⟳ Úp (Y)</button>
+                <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); border-color: #10b981;" onclick="app.rollActive()">⟳ Úp (T)</button>
                 
                 <button class="btn btn-secondary" id="btn-target" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); grid-column: 1 / span 2; border-color: #10b981;" onclick="app.toggleTargetingMode()"><span id="target-icon">📍</span> Quét Bắt Điểm</button>
                 <button class="btn btn-secondary" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); color: #ef4444;" onclick="app.removeActive()">🗑 Xóa Box</button>
+                <button class="btn btn-secondary" id="btn-drag-snap" style="font-size: 10px; padding: 6px; background: rgba(0,0,0,0.5); grid-column: 1 / span 3; border-color: #60a5fa;" onclick="app.toggleDragSnapMode()">🧲 Snap Kéo-Thả: Layer</button>
             </div>
         </div>
 
@@ -193,6 +226,19 @@
                 </div>
             </div>
         </div>
+
+        <div class="form-panel" style="margin-bottom: 16px; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2);">
+            <div class="list-header" style="margin-bottom: 8px; border-bottom-color: rgba(16, 185, 129, 0.2); color: #10b981;">
+                <span>📐 THỂ TÍCH & KÍCH THƯỚC (Pallet 1)</span>
+                <span id="lbl-overhang-warn" style="display:none; color: #ef4444; font-size: 10px; background: rgba(239,68,68,0.2); padding: 2px 6px; border-radius: 4px; border: 1px solid #ef4444;">⚠️ TRÀN MÉP</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; color: var(--text-muted);">
+                <div><strong>Pallet Rỗng (L x W x H):</strong> <br><span id="lbl-base-dim" style="color:#fff; font-size: 13px;">1200 x 1000 x 170</span></div>
+                <div><strong>Giới hạn Tối đa:</strong> <br><span id="lbl-limit-dim" style="color:#fff; font-size: 13px;">1200 x 1000 x 2600</span></div>
+                <div><strong>Đang sử dụng (Bao phủ):</strong> <br><span id="lbl-used-dim" style="color:#3b82f6; font-size: 13px; font-weight:bold;">0 x 0 x 170</span></div>
+                <div><strong>Khoảng trống Dư:</strong> <br><span id="lbl-free-dim" style="color:#10b981; font-size: 13px; font-weight:bold;">1200 x 1000 x 2430</span></div>
+            </div>
+        </div>
         
         <div style="font-size: 11px; text-align: center; margin-bottom: 12px; color: var(--text-muted);" id="lbl-status">
             Đang tải dữ liệu Masterdata...
@@ -207,6 +253,13 @@
     <script>
         class Palletizer {
             constructor() {}
+
+            calcBoxCbm(box) {
+                const l = Number(box?.l) || 0;
+                const w = Number(box?.w) || 0;
+                const h = Number(box?.h) || 0;
+                return (l * w * h) / 1000000000;
+            }
             
             // Hàm sinh mẫu lưới layer tối ưu (Chấp nhận Pallet Ratio +5% Overhang)
             calculateBestLayerPatterns(palletL, palletW, boxL, boxW) {
@@ -257,17 +310,295 @@
                 return bestLayouts.length ? bestLayouts : [];
             }
 
-            planMultipleOrders(orderList, allowMix, palletType = "1.2") {
+            hashSku(text) {
+                const src = String(text || '');
+                let hash = 0;
+                for (let i = 0; i < src.length; i++) {
+                    hash = ((hash << 5) - hash) + src.charCodeAt(i);
+                    hash |= 0;
+                }
+                return Math.abs(hash);
+            }
+
+            createOrderVariants(orderList) {
+                const original = orderList.map(o => ({ ...o }));
+                const weightVolume = (o) => (o.qty || 0) * (o.l || 0) * (o.w || 0) * (o.h || 0);
+                const footprint = (o) => (o.l || 0) * (o.w || 0);
+                const volume = (o) => (o.l || 0) * (o.w || 0) * (o.h || 0);
+
+                return {
+                    original,
+                    byQtyVolumeDesc: [...original].sort((a, b) => weightVolume(b) - weightVolume(a)),
+                    byVolumeDesc: [...original].sort((a, b) => volume(b) - volume(a)),
+                    byFootprintDesc: [...original].sort((a, b) => footprint(b) - footprint(a)),
+                    byHeightDesc: [...original].sort((a, b) => (b.h || 0) - (a.h || 0))
+                };
+            }
+
+            buildAIStrategies(orderList, aiMode) {
+                const variants = this.createOrderVariants(orderList);
+                const byMode = {
+                    min_pallet: {
+                        orderKeys: ['byQtyVolumeDesc', 'byVolumeDesc', 'byFootprintDesc', 'original'],
+                        patternModes: ['cycle', 'sku_hash', 'fixed_first'],
+                        mirrorModes: [true, false]
+                    },
+                    stable: {
+                        orderKeys: ['byHeightDesc', 'byFootprintDesc', 'original'],
+                        patternModes: ['sku_hash', 'fixed_first'],
+                        mirrorModes: [true]
+                    },
+                    balance: {
+                        orderKeys: ['byQtyVolumeDesc', 'byFootprintDesc', 'byVolumeDesc', 'original'],
+                        patternModes: ['cycle', 'sku_hash'],
+                        mirrorModes: [true, false]
+                    }
+                };
+                const cfg = byMode[aiMode] || byMode.balance;
+                const out = [];
+                cfg.orderKeys.forEach(orderKey => {
+                    cfg.patternModes.forEach(patternMode => {
+                        cfg.mirrorModes.forEach(mirror => {
+                            out.push({
+                                id: `${orderKey}_${patternMode}_${mirror ? 'mirror' : 'nomirror'}`,
+                                orderKey,
+                                patternMode,
+                                alternateMirror: mirror,
+                                orders: variants[orderKey] || variants.original
+                            });
+                        });
+                    });
+                });
+                return out;
+            }
+
+            scorePlan(pallets, palletType, aiMode) {
+                if (!pallets || pallets.length === 0) {
+                    return { score: Number.MAX_SAFE_INTEGER };
+                }
+
+                const palletLength = palletType === "1.9" ? 1900 : 1200;
+                const usableHeight = 2600 - 170;
+                const capacityCbmPerPallet = (palletLength * 1000 * usableHeight) / 1000000000;
+
+                let totalVolume = 0;
+                const fillRatios = [];
+                const topRatios = [];
+                pallets.forEach(p => {
+                    const palletVol = (p.boxes || []).reduce((sum, b) => sum + this.calcBoxCbm(b), 0);
+                    totalVolume += palletVol;
+                    fillRatios.push(capacityCbmPerPallet > 0 ? (palletVol / capacityCbmPerPallet) : 0);
+                    topRatios.push(Math.max(0, ((p.zMax || 170) - 170) / usableHeight));
+                });
+
+                const mean = (arr) => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+                const std = (arr) => {
+                    if (!arr.length) return 0;
+                    const m = mean(arr);
+                    return Math.sqrt(arr.reduce((s, v) => s + Math.pow(v - m, 2), 0) / arr.length);
+                };
+
+                const avgFill = mean(fillRatios);
+                const stdFill = std(fillRatios);
+                const avgTop = mean(topRatios);
+                const stdTop = std(topRatios);
+                const maxTop = topRatios.length ? Math.max(...topRatios) : 0;
+                const totalUnused = Math.max(0, (capacityCbmPerPallet * pallets.length) - totalVolume);
+
+                let score = pallets.length * 1000000;
+                if (aiMode === 'min_pallet') {
+                    score += (totalUnused * 12000) + (stdFill * 2000) + (avgTop * 400);
+                } else if (aiMode === 'stable') {
+                    score += (totalUnused * 14000) + (maxTop * 5000) + (stdTop * 4500) + (stdFill * 2500);
+                } else {
+                    score += (totalUnused * 15000) + (stdFill * 6000) + (Math.abs(0.82 - avgFill) * 2500) + (maxTop * 600);
+                }
+
+                if (maxTop > 1) {
+                    score += (maxTop - 1) * 10000000;
+                }
+
+                return {
+                    score,
+                    palletCount: pallets.length,
+                    totalUnused,
+                    avgFill,
+                    stdFill,
+                    maxTop
+                };
+            }
+
+            planWithAI(orderList, allowMix, palletType = "1.2", aiMode = "balance") {
+                if (aiMode === 'off') {
+                    const pallets = this.planMultipleOrders(orderList, allowMix, palletType, { id: 'rule_based' });
+                    return {
+                        pallets,
+                        meta: { aiUsed: false, label: 'Rule-based', tested: 1 }
+                    };
+                }
+
+                const candidates = this.buildAIStrategies(orderList, aiMode);
+                let best = null;
+
+                candidates.forEach(strategy => {
+                    const pallets = this.planMultipleOrders(strategy.orders, allowMix, palletType, strategy);
+                    const metrics = this.scorePlan(pallets, palletType, aiMode);
+                    if (!best || metrics.score < best.metrics.score) {
+                        best = { strategy, pallets, metrics };
+                    }
+                });
+
+                if (!best) {
+                    const fallback = this.planMultipleOrders(orderList, allowMix, palletType, { id: 'fallback' });
+                    return {
+                        pallets: fallback,
+                        meta: { aiUsed: true, label: 'AI fallback', tested: 0 }
+                    };
+                }
+
+                const modeLabel = aiMode === 'min_pallet'
+                    ? 'AI Min Pallet'
+                    : aiMode === 'stable'
+                    ? 'AI Stable Height'
+                    : 'AI Smart Balance';
+
+                return {
+                    pallets: best.pallets,
+                    meta: {
+                        aiUsed: true,
+                        label: modeLabel,
+                        tested: candidates.length,
+                        strategyId: best.strategy.id
+                    }
+                };
+            }
+
+            settlePalletBoxes(pallet, palletLength, palletWidth, palletBaseHeight = 170, minSupportRatio = 0.7) {
+                if (!pallet || !pallet.boxes || pallet.boxes.length === 0) return;
+
+                const sorted = [...pallet.boxes].sort((a, b) => {
+                    if (a.z !== b.z) return a.z - b.z;
+                    if (a.y !== b.y) return a.y - b.y;
+                    return a.x - b.x;
+                });
+
+                const placed = [];
+                let zMax = palletBaseHeight;
+
+                const getFootprint = (box) => {
+                    const effL = box.angle === 0 ? box.l : box.w;
+                    const effW = box.angle === 0 ? box.w : box.l;
+                    return {
+                        minX: box.x - effL / 2,
+                        maxX: box.x + effL / 2,
+                        minY: box.y - effW / 2,
+                        maxY: box.y + effW / 2
+                    };
+                };
+
+                const overlaps2D = (a, b) => {
+                    const overlapX = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
+                    const overlapY = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
+                    return overlapX > 1 && overlapY > 1; // dung sai 1mm
+                };
+
+                const overlapArea2D = (a, b) => {
+                    const overlapX = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
+                    const overlapY = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
+                    if (overlapX <= 1 || overlapY <= 1) return 0;
+                    return overlapX * overlapY;
+                };
+
+                const palletRect = { minX: 0, maxX: palletLength, minY: 0, maxY: palletWidth };
+
+                for (const box of sorted) {
+                    const fp = getFootprint(box);
+                    const boxArea = Math.max(1, (fp.maxX - fp.minX) * (fp.maxY - fp.minY));
+                    const areaByTop = {};
+
+                    for (const under of placed) {
+                        if (!overlaps2D(fp, under.fp)) continue;
+                        const top = under.box.z + under.box.h / 2;
+                        const area = overlapArea2D(fp, under.fp);
+                        if (area <= 0) continue;
+                        if (!areaByTop[top]) areaByTop[top] = 0;
+                        areaByTop[top] += area;
+                    }
+
+                    const palletSupportArea = overlapArea2D(fp, palletRect);
+                    areaByTop[palletBaseHeight] = (areaByTop[palletBaseHeight] || 0) + palletSupportArea;
+
+                    const topsDesc = Object.keys(areaByTop)
+                        .map(v => parseFloat(v))
+                        .filter(v => !Number.isNaN(v))
+                        .sort((a, b) => b - a);
+
+                    let supportTop = palletBaseHeight;
+                    let bestRatio = 0;
+                    for (const top of topsDesc) {
+                        const ratio = Math.min(1, (areaByTop[top] || 0) / boxArea);
+                        if (ratio > bestRatio) {
+                            bestRatio = ratio;
+                            supportTop = top;
+                        }
+                        if (ratio >= minSupportRatio) {
+                            supportTop = top;
+                            break;
+                        }
+                    }
+
+                    box.z = supportTop + box.h / 2;
+                    const topEdge = box.z + box.h / 2;
+                    if (topEdge > zMax) zMax = topEdge;
+
+                    placed.push({ box, fp });
+                }
+
+                const tops = [];
+                sorted.forEach(b => {
+                    const top = b.z + b.h / 2;
+                    let found = -1;
+                    for (let i = 0; i < tops.length; i++) {
+                        if (Math.abs(tops[i] - top) < 10) { found = i; break; }
+                    }
+                    if (found === -1) tops.push(top);
+                });
+                tops.sort((a, b) => a - b);
+
+                sorted.forEach(b => {
+                    const top = b.z + b.h / 2;
+                    let layerIdx = 0;
+                    let bestDiff = Infinity;
+                    for (let i = 0; i < tops.length; i++) {
+                        const diff = Math.abs(tops[i] - top);
+                        if (diff < bestDiff) {
+                            bestDiff = diff;
+                            layerIdx = i;
+                        }
+                    }
+                    b.layer = layerIdx + 1;
+                });
+
+                pallet.zMax = zMax;
+                pallet.highestLayer = tops.length;
+            }
+
+            planMultipleOrders(orderList, allowMix, palletType = "1.2", strategy = {}) {
                 const palletLength = palletType === "1.9" ? 1900 : 1200;
                 const palletWidth = 1000;
                 const palletBaseHeight = 170;
                 const maxHeightLimit = 2600;
+                const patternMode = strategy.patternMode || 'cycle';
+                const alternateMirror = strategy.alternateMirror !== false;
                 
                 let pallets = [];
                 let currentPallet = { boxes: [], zMax: palletBaseHeight, highestLayer: 0 };
                 
                 const pushPallet = () => {
-                    if (currentPallet.boxes.length > 0) pallets.push(currentPallet);
+                    if (currentPallet.boxes.length > 0) {
+                        this.settlePalletBoxes(currentPallet, palletLength, palletWidth, palletBaseHeight, 0.7);
+                        pallets.push(currentPallet);
+                    }
                     currentPallet = { boxes: [], zMax: palletBaseHeight, highestLayer: 0 };
                 };
 
@@ -292,13 +623,16 @@
                             
                             for (let layer = 0; layer < maxByH; layer++) {
                                 if (packed >= remainQty) break;
-                                const patIdx = layer % patterns.length;
+                                let patIdx = layer % patterns.length;
+                                if (patternMode === 'fixed_first') patIdx = 0;
+                                if (patternMode === 'fixed_last') patIdx = patterns.length - 1;
+                                if (patternMode === 'sku_hash') patIdx = (this.hashSku(order.sku) + layer) % patterns.length;
                                 const zCenter = zStart + (layer * order.h) + order.h / 2.0;
                                 
                                 for (let item of patterns[patIdx]) {
                                     if (packed >= remainQty) break;
                                     let cx = item.x, cy = item.y;
-                                    if (patterns.length === 1 && layer % 2 === 1) { 
+                                    if (alternateMirror && patterns.length === 1 && layer % 2 === 1) {
                                         cx = allowL - item.x; cy = allowW - item.y;
                                     }
                                     
@@ -353,10 +687,24 @@
             activeBoxId: null,
             isTargetingMode: false,
             isDropMode: false,
+            isLoadingState: false,
+            layerLabelsGroup: null,
+            
+            isDragging: false,
+            hasDragged: false,
+            dragPlane: null,
+            dragOffset: null,
+            intersectionPoint: null,
+            dragStartTopY: null,
+            dragSnapMode: 'layer', // layer | gravity
+            ghostBox: null,
+            dropPreviewAngle: 0,
+            dropPreviewFlip: 'none', // none | flipW | flipL
             
             // DOM
             inpPallet: document.getElementById('inp-pallet'),
             inpMix: document.getElementById('inp-mix'),
+            inpAiMode: document.getElementById('inp-ai-mode'),
             inpSku: document.getElementById('inp-sku'),
             skuList: document.getElementById('sku-list'),
             inpL: document.getElementById('inp-l'),
@@ -368,14 +716,31 @@
             orderListUI: document.getElementById('order-list-ui'),
             
             layerColors: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'],
+            ghostInfoEl: null,
+
+            calcBoxCbm(box) {
+                const l = Number(box?.l) || 0;
+                const w = Number(box?.w) || 0;
+                const h = Number(box?.h) || 0;
+                return (l * w * h) / 1000000000;
+            },
 
             init() {
                 this.initThreeJS();
                 this.bindEvents();
                 this.fetchMasterData();
 
-                // Make sure we have 1 empty pallet to start if we want to manual stack immediately
-                this.rebuildNPallets(1, 1200);
+                const loaded = this.loadState();
+                if (!loaded) {
+                    // Make sure we have 1 empty pallet to start if we want to manual stack immediately
+                    this.rebuildNPallets(1, 1200);
+                }
+
+                const orientSel = document.getElementById('inp-orient');
+                if (orientSel) this.dropPreviewAngle = parseInt(orientSel.value || 0);
+                this.ghostInfoEl = document.getElementById('ghost-info');
+                this.dropPreviewFlip = 'none';
+                this.toggleDragSnapMode(this.dragSnapMode);
 
                 setTimeout(() => { document.getElementById('loading').style.display = 'none'; }, 500);
             },
@@ -383,8 +748,11 @@
             async fetchMasterData() {
                 try {
                     const res = await fetch('/api/masterdata');
-                    if (res.ok) {
-                        this.masterdata = await res.json();
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                    }
+                    this.masterdata = await res.json();
+                    if (this.skuList) {
                         this.skuList.innerHTML = '';
                         this.masterdata.forEach(m => {
                             const opt = document.createElement('option');
@@ -392,10 +760,12 @@
                             opt.text = m.description || m.sku;
                             this.skuList.appendChild(opt);
                         });
-                        this.lblStatus.innerText = 'Đã tải Masterdata. Sẵn sàng.';
                     }
+                    if (this.lblStatus) this.lblStatus.innerText = 'Đã tải Masterdata. Sẵn sàng.';
                 } catch (e) {
-                    this.lblStatus.innerText = 'Lỗi tải Masterdata (Chạy chế độ Offline)';
+                    const errMsg = `Lỗi tải Masterdata: ${e.message} (Chạy chế độ Offline)`;
+                    if (this.lblStatus) this.lblStatus.innerText = errMsg;
+                    console.warn(errMsg);
                 }
             },
             
@@ -413,17 +783,23 @@
             },
 
             addOrder() {
-                const l = parseFloat(this.inpL.value); const w = parseFloat(this.inpW.value);
-                const h = parseFloat(this.inpH.value); const wt = parseFloat(this.inpWeight.value);
-                const qty = parseInt(this.inpQty.value);
-                const sku = this.inpSku.value || `BOX-${Math.floor(Math.random()*1000)}`;
+                const l = parseFloat(this.inpL.value) || 0;
+                const w = parseFloat(this.inpW.value) || 0;
+                const h = parseFloat(this.inpH.value) || 0;
+                const wt = parseFloat(this.inpWeight.value) || 0;
+                const qty = parseInt(this.inpQty.value) || 0;
+                const sku = this.inpSku.value?.trim() || `BOX-${Math.floor(Math.random()*1000)}`;
 
-                if (!l || !w || !h || !qty || qty <= 0) {
-                    this.lblStatus.innerText = 'Dữ liệu Order không hợp lệ'; this.lblStatus.style.color = '#ef4444'; return;
+                if (!l || l <= 0 || !w || w <= 0 || !h || h <= 0 || !qty || qty <= 0) {
+                    this.lblStatus.innerText = '❌ Nhập giá trị dương cho tất cả trường';
+                    this.lblStatus.style.color = '#ef4444';
+                    return;
                 }
                 
                 this.orderList.push({ id: Date.now(), sku, l, w, h, weight: wt, qty });
                 this.renderOrderList();
+                this.lblStatus.innerText = `✅ Đã thêm đơn hàng: ${sku} (${qty} thùng)`;
+                this.lblStatus.style.color = '#10b981';
             },
 
             removeOrder(id) {
@@ -484,18 +860,106 @@
                     }
                 }
                 
-                if (bestZ > 170) bestSpot.z += 2; // subtle float above boxes
                 return bestSpot;
             },
 
-            addManualBox() {
-                const l = parseFloat(this.inpL.value) || 400; const w = parseFloat(this.inpW.value) || 300;
-                const h = parseFloat(this.inpH.value) || 200; const wt = parseFloat(this.inpWeight.value) || 5;
-                const sku = this.inpSku.value || `MANUAL-${Math.floor(Math.random()*1000)}`;
-                const cbm = (l * w * h) / 1000000000;
+            getLowestClearSupportTop(tMinX, tMaxX, tMinZ, tMaxZ, boxH, excludeMesh = null) {
+                const overlaps = [];
+                for (let m of this.meshes) {
+                    if (m === excludeMesh || m.userData.deleted) continue;
+                    const bb = new THREE.Box3().setFromObject(m);
+                    bb.expandByScalar(-1);
+                    if (tMinX < bb.max.x && tMaxX > bb.min.x && tMinZ < bb.max.z && tMaxZ > bb.min.z) {
+                        overlaps.push({ minY: bb.min.y, maxY: bb.max.y });
+                    }
+                }
+
+                let bottomY = 170; // mặt pallet
+                const epsilon = 0.001;
+                let guard = 0;
+                while (guard < 200) {
+                    guard++;
+                    let blockingTop = null;
+                    for (const itv of overlaps) {
+                        const overlapY = (bottomY < itv.maxY - epsilon) && (bottomY + boxH > itv.minY + epsilon);
+                        if (overlapY) {
+                            if (blockingTop === null || itv.maxY > blockingTop) blockingTop = itv.maxY;
+                        }
+                    }
+                    if (blockingTop === null) break;
+                    bottomY = blockingTop;
+                }
+                return bottomY;
+            },
+
+            settleAllBoxesToSupports() {
+                if (!this.boxesData || this.boxesData.length === 0) return;
                 const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
 
-                const spot = this.findEmptySpotOnPallet(0, l, w, h, pLen);
+                const groups = new Map();
+                this.boxesData.forEach(b => {
+                    if (!b || b.deleted) return;
+                    if (!groups.has(b.pIdx)) groups.set(b.pIdx, []);
+                    groups.get(b.pIdx).push(b);
+                });
+
+                groups.forEach((arr) => {
+                    arr.sort((a, b) => {
+                        if (a.z !== b.z) return a.z - b.z;
+                        if (a.y !== b.y) return a.y - b.y;
+                        return a.x - b.x;
+                    });
+
+                    const placed = [];
+                    arr.forEach(b => {
+                        const effL = b.angle === 0 ? b.l : b.w;
+                        const effW = b.angle === 0 ? b.w : b.l;
+                        const tMinX = b.x - effL / 2 + 1;
+                        const tMaxX = b.x + effL / 2 - 1;
+                        const tMinY = b.y - effW / 2 + 1;
+                        const tMaxY = b.y + effW / 2 - 1;
+
+                        let supportTop = 170;
+                        placed.forEach(u => {
+                            if (tMinX < u.maxX && tMaxX > u.minX && tMinY < u.maxY && tMaxY > u.minY) {
+                                if (u.top > supportTop) supportTop = u.top;
+                            }
+                        });
+
+                        b.z = supportTop + b.h / 2;
+                        const top = b.z + b.h / 2;
+                        placed.push({ minX: tMinX, maxX: tMaxX, minY: tMinY, maxY: tMaxY, top });
+                    });
+                });
+
+                this.meshes.forEach(mesh => {
+                    const data = this.boxesData.find(b => !b.deleted && b.id === mesh.userData.id);
+                    if (!data) return;
+                    mesh.position.set(data.x - (pLen / 2) + (data.offsetX || 0), data.z, data.y - 500);
+                });
+
+                this.updateStats();
+            },
+
+            addManualBox() {
+                let l = parseFloat(this.inpL.value) || 400; let w = parseFloat(this.inpW.value) || 300;
+                let h = parseFloat(this.inpH.value) || 200; const wt = parseFloat(this.inpWeight.value) || 5;
+                const sku = this.inpSku.value?.trim() || `MANUAL-${Math.floor(Math.random()*1000)}`;
+                const cbm = (l * w * h) / 1000000000;
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                const orientEl = document.getElementById('inp-orient');
+                const angle = Number.isFinite(this.dropPreviewAngle) ? this.dropPreviewAngle : (orientEl ? parseInt(orientEl.value) : 0);
+
+                // Lật úp theo tùy chọn (flip chiều rộng hoặc chiều dài lên cao)
+                if (this.dropPreviewFlip === 'flipW') [w, h] = [h, w];
+                else if (this.dropPreviewFlip === 'flipL') [l, h] = [h, l];
+
+                // Tính kích thước hiệu dụng tuỳ theo góc thả thủ công
+                const quarterIdx = Math.abs(Math.round(angle / 90)) % 2;
+                const effL = quarterIdx === 0 ? l : w;
+                const effW = quarterIdx === 0 ? w : l;
+
+                const spot = this.findEmptySpotOnPallet(0, effL, effW, h, pLen);
 
                 const boxData = {
                     id: Date.now() + Math.random(),
@@ -503,7 +967,7 @@
                     x: spot.x,
                     y: spot.y,     
                     z: spot.z, 
-                    angle: 0,
+                    angle: angle,
                     layer: 0,
                     l: l, w: w, h: h, weight: wt, cbm: cbm,
                     pIdx: 0,     // assume pallet 0 for manual drops
@@ -522,32 +986,65 @@
                 this.isDropMode = !this.isDropMode;
                 const btn = document.getElementById('btn-addDropMode');
                 if (this.isDropMode) {
+                    this.settleAllBoxesToSupports();
                     btn.style.background = '#10b981'; // Green
                     btn.innerHTML = '✅ Đang bật Thả Tay (Click để xếp)';
                     this.container.style.cursor = 'crosshair';
                     this.lblStatus.innerText = 'Click lên Pallet hoặc các thùng khác để xếp hàng thủ công.';
+                    const orientSel = document.getElementById('inp-orient');
+                    if (orientSel) this.dropPreviewAngle = parseInt(orientSel.value || 0) || 0;
+                    this.dropPreviewFlip = 'none';
+                    if (this.ghostBox) this.ghostBox.visible = true;
+                    this.updateGhostInfo({
+                        angle: this.dropPreviewAngle,
+                        l: parseFloat(this.inpL.value) || 400,
+                        w: parseFloat(this.inpW.value) || 300,
+                        h: parseFloat(this.inpH.value) || 200,
+                        overhang: false,
+                        flip: this.dropPreviewFlip
+                    });
                 } else {
                     btn.style.background = '#8b5cf6';
                     btn.innerHTML = '🧰 Thả Bằng Tay';
                     this.container.style.cursor = 'default';
+                    if (this.ghostBox) this.ghostBox.visible = false;
+                    this.updateGhostInfo(null);
                     this.lblStatus.innerText = 'Đã tắt chế độ xếp hàng thủ công.';
                 }
             },
 
             addManualBoxAtPoint(worldPoint) {
-                const l = parseFloat(this.inpL.value) || 400; const w = parseFloat(this.inpW.value) || 300;
-                const h = parseFloat(this.inpH.value) || 200; const wt = parseFloat(this.inpWeight.value) || 5;
-                const sku = this.inpSku.value || `MANUAL-${Math.floor(Math.random()*1000)}`;
+                let l = parseFloat(this.inpL.value) || 400; let w = parseFloat(this.inpW.value) || 300;
+                let h = parseFloat(this.inpH.value) || 200; const wt = parseFloat(this.inpWeight.value) || 5;
+                const sku = this.inpSku.value?.trim() || `MANUAL-${Math.floor(Math.random()*1000)}`;
                 const cbm = (l * w * h) / 1000000000;
                 const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                const orientEl = document.getElementById('inp-orient');
+                const angle = Number.isFinite(this.dropPreviewAngle) ? this.dropPreviewAngle : (orientEl ? parseInt(orientEl.value) : 0);
+                const quarterIdx = Math.abs(Math.round(angle / 90)) % 2;
+
+                if (this.dropPreviewFlip === 'flipW') [w, h] = [h, w];
+                else if (this.dropPreviewFlip === 'flipL') [l, h] = [h, l];
+                const effL = quarterIdx === 0 ? l : w;
+                const effW = quarterIdx === 0 ? w : l;
+
+                const snap = 10;
+                const snappedX = Math.round(worldPoint.x / snap) * snap;
+                const snappedZ = Math.round(worldPoint.z / snap) * snap;
+                const tMinX = snappedX - effL/2 + 1;
+                const tMaxX = snappedX + effL/2 - 1;
+                const tMinZ = snappedZ - effW/2 + 1;
+                const tMaxZ = snappedZ + effW/2 - 1;
+                const supportTop = this.getLowestClearSupportTop(tMinX, tMaxX, tMinZ, tMaxZ, h, null);
+                const predictedY = supportTop + h / 2;
 
                 const boxData = {
                     id: Date.now() + Math.random(),
                     sku: sku,
-                    x: worldPoint.x + (pLen/2),
-                    y: worldPoint.z + 500,     
-                    z: worldPoint.y + h/2, 
-                    angle: 0,
+                    x: snappedX + (pLen/2),
+                    y: snappedZ + 500,
+                    z: predictedY,
+                    angle: angle,
                     layer: 0,
                     l: l, w: w, h: h, weight: wt, cbm: cbm,
                     pIdx: 0,
@@ -558,10 +1055,6 @@
                 // Add to flattened array bypassing auto plan
                 this.boxesData.push(boxData);
                 this.drawNextCarton(true); 
-                
-                // Snap using existing logic dynamically to prevent overlaps
-                this.activeBoxId = boxData.id;
-                this.snapActiveToPoint(worldPoint);
                 this.deselectActive(); // Quickly deselect to allow more drops
             },
 
@@ -575,7 +1068,20 @@
 
                 document.getElementById('interactive-panel').style.display = 'block';
                 document.getElementById('active-carton-title').innerText = `Đang chọn: ${data.sku}`;
-                mesh.material.emissive.setHex(0x444444);
+                
+                // Hỗ trợ hiển thị chọn đối với hình khối có nhiều nhãn dán (Array material)
+                if (Array.isArray(mesh.material)) {
+                    mesh.material.forEach(mat => mat.emissive.setHex(0x444444));
+                } else {
+                    mesh.material.emissive.setHex(0x444444);
+                }
+
+                // Highlight màu trên danh sách thanh công cụ
+                const uiItem = document.getElementById(`ui-item-${boxId}`);
+                if (uiItem) {
+                    uiItem.classList.add('active');
+                    uiItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
                 
                 gsap.to(this.controls.target, { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z, duration: 0.5 });
             },
@@ -583,7 +1089,15 @@
             deselectActive() {
                 if (this.activeBoxId) {
                     const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
-                    if (mesh) mesh.material.emissive.setHex(0x000000);
+                    if (mesh) {
+                        if (Array.isArray(mesh.material)) {
+                            mesh.material.forEach(mat => mat.emissive.setHex(0x000000));
+                        } else {
+                            mesh.material.emissive.setHex(0x000000);
+                        }
+                    }
+                    const uiItem = document.getElementById(`ui-item-${this.activeBoxId}`);
+                    if (uiItem) uiItem.classList.remove('active');
                 }
                 this.activeBoxId = null;
                 document.getElementById('interactive-panel').style.display = 'none';
@@ -635,6 +1149,7 @@
                 data.y = worldPoint.z + 500;
                 
                 this.updateStats();
+                this.updateCartonUI(data);
             },
 
             addManualPallet() {
@@ -643,6 +1158,76 @@
                 const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
                 this.rebuildNPallets(newNum, pLen);
                 this.updateStats();
+            },
+
+            copyTopLayer() {
+                const validBoxes = this.boxesData.filter(b => !b.deleted);
+                if (validBoxes.length === 0) {
+                    this.lblStatus.innerText = 'Chưa có kiện hàng nào để copy!';
+                    this.lblStatus.style.color = '#ef4444';
+                    return;
+                }
+
+                let maxZ = -Infinity;
+                for (let b of validBoxes) {
+                    if (b.z > maxZ) maxZ = b.z;
+                }
+
+                const topLayerBoxes = validBoxes.filter(b => Math.abs(b.z - maxZ) < 5);
+                if (topLayerBoxes.length === 0) return;
+
+                let addedCount = 0;
+                topLayerBoxes.forEach(b => {
+                    const newBox = Object.assign({}, b);
+                    newBox.id = Date.now() + Math.random();
+                    newBox.z = b.z + b.h; 
+                    newBox.layer = (b.layer || 0) + 1;
+                    newBox.isManual = true; 
+
+                    this.boxesData.push(newBox);
+                    this.drawNextCarton(true); 
+                    addedCount++;
+                });
+
+                this.lblStatus.innerText = `Đã nhân bản ${addedCount} kiện hàng lên lớp tiếp theo.`;
+                this.lblStatus.style.color = '#10b981';
+            },
+
+            copyBlock() {
+                const validBoxes = this.boxesData.filter(b => !b.deleted);
+                if (validBoxes.length === 0) {
+                    this.lblStatus.innerText = 'Chưa có kiện hàng nào để copy!';
+                    this.lblStatus.style.color = '#ef4444';
+                    return;
+                }
+
+                let maxTop = 170; // Mặt sàn Pallet Base Z
+                let maxLayer = 0;
+                for (let b of validBoxes) {
+                    const top = b.z + (b.h / 2);
+                    if (top > maxTop) maxTop = top;
+                    if (b.layer > maxLayer) maxLayer = b.layer;
+                }
+
+                // Tính toán chiều cao của toàn bộ khối để dịch chuyển lên trên
+                const blockHeight = maxTop - 170;
+                if (blockHeight <= 0) return;
+
+                let addedCount = 0;
+                validBoxes.forEach(b => {
+                    const newBox = Object.assign({}, b);
+                    newBox.id = Date.now() + Math.random();
+                    newBox.z = b.z + blockHeight; 
+                    newBox.layer = (b.layer || 0) + maxLayer + 1;
+                    newBox.isManual = true; 
+
+                    this.boxesData.push(newBox);
+                    this.drawNextCarton(true);
+                    addedCount++;
+                });
+
+                this.lblStatus.innerText = `Đã nhân bản toàn bộ khối (${addedCount} kiện) lên trên.`;
+                this.lblStatus.style.color = '#10b981';
             },
 
             checkCollisionWithGravity(mesh, dx, dy, dz) {
@@ -791,6 +1376,7 @@
                 data.y = newZ + 500;
                 
                 this.updateStats();
+                this.updateCartonUI(data);
             },
 
             rotateActive() {
@@ -801,7 +1387,9 @@
                 
                 data.angle = data.angle === 0 ? 90 : 0;
                 gsap.to(mesh.rotation, { y: mesh.rotation.y + (Math.PI / 2), duration: 0.3, ease: "back.out(1.5)" });
+                this.lblStatus.innerText = `Đã xoay thùng đang chọn sang ${data.angle}°. Nhấn R để đổi lại.`;
                 this.updateStats();
+                this.updateCartonUI(data);
             },
 
             flipActive() {
@@ -810,10 +1398,19 @@
                 const data = this.boxesData.find(b => b.id === this.activeBoxId);
                 if (!mesh || !data) return;
                 
-                data.isFlipped = !data.isFlipped;
-                const targetRotX = data.isFlipped ? (mesh.rotation.x + (Math.PI / 2)) : (mesh.rotation.x - (Math.PI / 2));
-                gsap.to(mesh.rotation, { x: targetRotX, duration: 0.3, ease: "back.out(1.5)" });
+                // Cập nhật đổi W ↔ H (chiều cao h mới)
+                const oldH = data.h;
+                data.h = data.w;
+                data.w = oldH;
+                
+                // Cân đối lại tọa độ y (để khối không bị lún hoặc lơ lửng)
+                const bottomZ = data.z - oldH/2;
+                data.z = bottomZ + data.h/2;
+                
+                gsap.to(mesh.rotation, { x: mesh.rotation.x + (Math.PI / 2), duration: 0.3, ease: "back.out(1.5)" });
+                gsap.to(mesh.position, { y: data.z, duration: 0.3, ease: "back.out(1.5)" });
                 this.updateStats();
+                this.updateCartonUI(data);
             },
 
             rollActive() {
@@ -822,25 +1419,44 @@
                 const data = this.boxesData.find(b => b.id === this.activeBoxId);
                 if (!mesh || !data) return;
                 
-                data.isRolled = !data.isRolled;
-                const targetRotZ = data.isRolled ? (mesh.rotation.z + (Math.PI / 2)) : (mesh.rotation.z - (Math.PI / 2));
-                gsap.to(mesh.rotation, { z: targetRotZ, duration: 0.3, ease: "back.out(1.5)" });
+                // Cập nhật đổi L ↔ H
+                const oldH = data.h;
+                data.h = data.l;
+                data.l = oldH;
+                
+                const bottomZ = data.z - oldH/2;
+                data.z = bottomZ + data.h/2;
+                
+                gsap.to(mesh.rotation, { z: mesh.rotation.z + (Math.PI / 2), duration: 0.3, ease: "back.out(1.5)" });
+                gsap.to(mesh.position, { y: data.z, duration: 0.3, ease: "back.out(1.5)" });
                 this.updateStats();
+                this.updateCartonUI(data);
             },
 
             removeActive() {
                 if (!this.activeBoxId) return;
-                const meshIdx = this.meshes.findIndex(m => m.userData.id === this.activeBoxId);
-                const dataIdx = this.boxesData.findIndex(b => b.id === this.activeBoxId);
+                const targetId = this.activeBoxId;
+                const meshIdx = this.meshes.findIndex(m => m.userData.id === targetId);
+                const dataIdx = this.boxesData.findIndex(b => b.id === targetId);
                 
                 if (meshIdx !== -1) {
                     const mesh = this.meshes[meshIdx];
                     this.scene.remove(mesh);
-                    mesh.geometry.dispose(); mesh.material.dispose();
+                    mesh.geometry.dispose(); 
+                    if (Array.isArray(mesh.material)) {
+                        mesh.material.forEach(mat => { if(mat.map) mat.map.dispose(); mat.dispose(); });
+                    } else {
+                        if (mesh.material.map) mesh.material.map.dispose();
+                        mesh.material.dispose();
+                    }
                     this.meshes.splice(meshIdx, 1);
                 }
                 if (dataIdx !== -1) {
                     this.boxesData[dataIdx].deleted = true; // Mark deleted to remove from stats
+                    
+                    // Loại bỏ thẻ UI trên thanh danh sách
+                    const uiItem = document.getElementById(`ui-item-${targetId}`);
+                    if (uiItem) uiItem.remove();
                 }
                 
                 this.deselectActive();
@@ -887,8 +1503,10 @@
                 const pType = this.inpPallet.value;
                 const pLen = pType === "1.9" ? 1900 : 1200;
                 const allowMix = this.inpMix.value === "true";
+                const aiMode = this.inpAiMode?.value || 'balance';
 
-                const resultPallets = this.palletizer.planMultipleOrders(this.orderList, allowMix, pType);
+                const planning = this.palletizer.planWithAI(this.orderList, allowMix, pType, aiMode);
+                const resultPallets = planning.pallets || [];
                 this.rebuildNPallets(Math.max(1, resultPallets.length), pLen);
 
                 this.boxesData = [];
@@ -904,7 +1522,11 @@
                 });
 
                 document.getElementById('btn-play').disabled = false;
-                this.lblStatus.innerText = `Đã thiết kế xong: ${resultPallets.length} Pallet (${this.boxesData.length} kiện). Đang mô phỏng...`;
+                if (planning.meta?.aiUsed) {
+                    this.lblStatus.innerText = `✅ ${planning.meta.label}: ${resultPallets.length} Pallet (${this.boxesData.length} kiện) · thử ${planning.meta.tested} chiến lược · chọn ${planning.meta.strategyId || 'best-fit'}.`;
+                } else {
+                    this.lblStatus.innerText = `Đã thiết kế xong: ${resultPallets.length} Pallet (${this.boxesData.length} kiện). Đang mô phỏng...`;
+                }
                 this.togglePlay(true);
             },
             
@@ -938,8 +1560,23 @@
                 const gridHelper = new THREE.GridHelper(10000, 100, '#1f2937', '#111827');
                 gridHelper.position.y = 1; this.scene.add(gridHelper);
                 
+                this.layerLabelsGroup = new THREE.Group();
+                this.scene.add(this.layerLabelsGroup);
+                
+                // Khởi tạo Ghost Box (Bóng mờ dự đoán vị trí)
+                this.ghostBox = new THREE.Mesh(
+                    new THREE.BoxGeometry(1, 1, 1),
+                    new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.5, depthWrite: false })
+                );
+                this.ghostBox.visible = false;
+                this.scene.add(this.ghostBox);
+
                 const animate = () => { requestAnimationFrame(animate); this.controls.update(); this.renderer.render(this.scene, this.camera); };
                 animate();
+
+                this.dragPlane = new THREE.Plane();
+                this.dragOffset = new THREE.Vector3();
+                this.intersectionPoint = new THREE.Vector3();
 
                 // -------------------------------------------------------------
                 // RAYCASTER IMPLEMENTATION FOR SELECTION
@@ -948,6 +1585,11 @@
                 this.mouse = new THREE.Vector2();
 
                 this.container.addEventListener('click', (e) => {
+                    // Nếu đang Drag khối (không phải click chọn) thì bỏ qua
+                    if (this.hasDragged) {
+                        this.hasDragged = false;
+                        return;
+                    }
                     const rect = this.container.getBoundingClientRect();
                     this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
                     this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -992,18 +1634,60 @@
                     }
                 });
 
+                const hint = document.createElement('div');
+                hint.innerHTML = `
+                    <p style="margin-bottom: 4px; color: #60a5fa; font-weight: bold;">🖱 Kéo thả (Drag) bằng chuột để di chuyển thùng</p>
+                    <p style="margin-bottom: 2px;">⌨ Phím <b>R</b>: Xoay ngang</p>
+                    <p style="margin-bottom: 2px;">⌨ Phím <b>F</b>: Xoay đứng (đổi W ↔ H)</p>
+                    <p style="margin-bottom: 2px;">⌨ Phím <b>T</b>: Lật úp (đổi L ↔ H)</p>
+                    <p>⌨ Phím <b>Mũi tên</b>: Dịch chuyển tinh chỉnh</p>
+                `;
+                hint.style.cssText = 'position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 12px 16px; border-radius: 8px; font-size: 12px; pointer-events: none; border: 1px solid rgba(255,255,255,0.1); z-index: 10;';
+                this.container.appendChild(hint);
+
                 window.addEventListener('resize', () => { this.camera.aspect = this.container.clientWidth / this.container.clientHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(this.container.clientWidth, this.container.clientHeight); });
             },
             
             bindEvents() {
-                document.getElementById('btn-addOrder').addEventListener('click', () => this.addOrder());
-                document.getElementById('btn-addManual').addEventListener('click', () => this.addManualBox());
-                document.getElementById('btn-addDropMode').addEventListener('click', () => this.toggleDropMode());
-                document.getElementById('btn-addPallet').addEventListener('click', () => this.addManualPallet());
-                document.getElementById('btn-calc').addEventListener('click', () => this.runAutoPlan());
-                document.getElementById('btn-clearAll').addEventListener('click', () => this.resetApp());
-                document.getElementById('btn-play').addEventListener('click', () => this.togglePlay());
-                this.inpSku.addEventListener('change', () => this.handleSkuChange());
+                document.getElementById('btn-addOrder')?.addEventListener('click', () => this.addOrder());
+                document.getElementById('btn-addManual')?.addEventListener('click', () => this.addManualBox());
+                document.getElementById('btn-addDropMode')?.addEventListener('click', () => this.toggleDropMode());
+                document.getElementById('btn-addPallet')?.addEventListener('click', () => this.addManualPallet());
+                document.getElementById('btn-copyLayer')?.addEventListener('click', () => this.copyTopLayer());
+                document.getElementById('btn-copyBlock')?.addEventListener('click', () => this.copyBlock());
+                document.getElementById('btn-calc')?.addEventListener('click', () => this.runAutoPlan());
+                document.getElementById('btn-clearAll')?.addEventListener('click', () => this.resetApp());
+                document.getElementById('btn-play')?.addEventListener('click', () => this.togglePlay());
+                
+                this.inpSku?.addEventListener('change', () => this.handleSkuChange());
+                this.inpPallet?.addEventListener('change', () => this.resetApp());
+                document.getElementById('inp-orient')?.addEventListener('change', (e) => {
+                    this.dropPreviewAngle = parseInt(e.target.value || 0) || 0;
+                    this.updateGhostInfo({
+                        angle: this.dropPreviewAngle,
+                        l: parseFloat(this.inpL.value) || 400,
+                        w: parseFloat(this.inpW.value) || 300,
+                        h: parseFloat(this.inpH.value) || 200,
+                        overhang: false,
+                        flip: this.dropPreviewFlip
+                    });
+                });
+
+                // Hỗ trợ kéo thả khối và điều khiển qua phím tắt
+                this.container?.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                window.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                window.addEventListener('mouseup', (e) => this.onMouseUp(e));
+                window.addEventListener('keydown', (e) => this.onKeyDown(e));
+            },
+
+            updateGhostInfo(info) {
+                if (!this.ghostInfoEl) return;
+                if (!info) { this.ghostInfoEl.innerText = 'Xem trước: --'; return; }
+                const angleNorm = ((info.angle % 360) + 360) % 360;
+                const orientation = (Math.abs(Math.round(angleNorm / 90)) % 2 === 0) ? 'Dọc' : 'Ngang';
+                const flipTxt = info.flip === 'flipW' ? '· Lật ngang (W→H)' : info.flip === 'flipL' ? '· Lật dài (L→H)' : '';
+                const overTxt = info.overhang ? ' · ⚠ Ngoài biên' : '';
+                this.ghostInfoEl.innerText = `Xem trước: ${angleNorm}° · ${orientation} ${flipTxt} · ${info.l}x${info.w}x${info.h}mm${overTxt}`;
             },
 
             resetApp() {
@@ -1011,9 +1695,421 @@
                 this.renderOrderList();
                 this.resetView();
                 this.boxesData = [];
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                this.rebuildNPallets(1, pLen); // Back to 1 empty pallet
                 this.updateStats();
-                this.rebuildNPallets(1, 1200); // Back to 1 empty pallet
                 document.getElementById('btn-play').disabled = true;
+            },
+
+            saveState() {
+                if (this.isLoadingState) return;
+                const state = {
+                    palletType: this.inpPallet.value,
+                    aiMode: this.inpAiMode?.value || 'balance',
+                    dragSnapMode: this.dragSnapMode || 'layer',
+                    boxes: this.boxesData.filter(b => !b.deleted),
+                    skuColorMap: this.skuColorMap
+                };
+                localStorage.setItem('palletSimulatorState', JSON.stringify(state));
+            },
+
+            loadState() {
+                const data = localStorage.getItem('palletSimulatorState');
+                if (!data) return false;
+                try {
+                    const state = JSON.parse(data);
+                    if (!state || !state.boxes || state.boxes.length === 0) return false;
+
+                    this.isLoadingState = true;
+                    if (state.palletType) this.inpPallet.value = state.palletType;
+                    if (state.aiMode && this.inpAiMode) this.inpAiMode.value = state.aiMode;
+                    if (state.dragSnapMode === 'gravity' || state.dragSnapMode === 'layer') {
+                        this.dragSnapMode = state.dragSnapMode;
+                    }
+                    if (state.skuColorMap) this.skuColorMap = state.skuColorMap;
+                    
+                    const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                    
+                    let maxPIdx = 0;
+                    state.boxes.forEach(b => { if (b.pIdx > maxPIdx) maxPIdx = b.pIdx; });
+                    this.rebuildNPallets(maxPIdx + 1, pLen);
+
+                    this.boxesData = [];
+                    state.boxes.forEach(b => {
+                        this.boxesData.push(b);
+                        this.drawNextCarton(true); 
+                    });
+
+                    this.isLoadingState = false;
+                    this.updateStats();
+                    this.lblStatus.innerText = `Đã khôi phục ${state.boxes.length} kiện hàng từ phiên làm việc trước.`;
+                    this.lblStatus.style.color = '#10b981';
+                    return true;
+                } catch (e) {
+                    console.error("Lỗi khi khôi phục cấu hình:", e);
+                    this.isLoadingState = false;
+                    return false;
+                }
+            },
+
+            onMouseDown(e) {
+                if (e.button !== 0 || this.isTargetingMode || this.isDropMode) return;
+                this.hasDragged = false;
+                const rect = this.container.getBoundingClientRect();
+                this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                
+                const intersects = this.raycaster.intersectObjects(this.meshes);
+                if (intersects.length > 0) {
+                    this.controls.enabled = false;
+                    this.isDragging = true;
+                    const hitMesh = intersects[0].object;
+                    
+                    if (hitMesh.userData.id) {
+                        this.activateCarton(hitMesh.userData.id);
+                        const activeData = this.boxesData.find(b => b.id === hitMesh.userData.id);
+                        this.dragStartTopY = activeData ? (hitMesh.position.y + activeData.h / 2) : null;
+                        this.dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), hitMesh.position);
+                        if (this.raycaster.ray.intersectPlane(this.dragPlane, this.intersectionPoint)) {
+                            this.dragOffset.copy(hitMesh.position).sub(this.intersectionPoint);
+                        }
+                        
+                        // Hiển thị Ghost Box bằng kích thước và góc xoay của hộp đang chọn
+                        if (this.ghostBox) {
+                            this.ghostBox.geometry.dispose();
+                            this.ghostBox.geometry = hitMesh.geometry.clone();
+                            this.ghostBox.position.copy(hitMesh.position);
+                            this.ghostBox.rotation.copy(hitMesh.rotation);
+                            this.ghostBox.visible = true;
+                        }
+                    }
+                }
+            },
+            
+            calculateMagneticSnap(mesh, targetX, targetZ) {
+                const threshold = 30; // Khoảng cách hút nam châm
+                let bestX = targetX;
+                let bestZ = targetZ;
+                let minDiffX = threshold;
+                let minDiffZ = threshold;
+
+                const bbox = new THREE.Box3().setFromObject(mesh);
+                const width = bbox.max.x - bbox.min.x;
+                const depth = bbox.max.z - bbox.min.z;
+                
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                const pW = 1000;
+
+                const checkSnapX = (targetEdge, refEdge, isLeftEdge) => {
+                    const diff = Math.abs(targetEdge - refEdge);
+                    if (diff < minDiffX) {
+                        minDiffX = diff;
+                        bestX = isLeftEdge ? refEdge + width/2 : refEdge - width/2;
+                    }
+                };
+
+                const checkSnapZ = (targetEdge, refEdge, isTopEdge) => {
+                    const diff = Math.abs(targetEdge - refEdge);
+                    if (diff < minDiffZ) {
+                        minDiffZ = diff;
+                        bestZ = isTopEdge ? refEdge + depth/2 : refEdge - depth/2;
+                    }
+                };
+
+                // Snap với biên Pallet
+                checkSnapX(targetX - width/2, -pLen/2, true);
+                checkSnapX(targetX + width/2, pLen/2, false);
+                checkSnapZ(targetZ - depth/2, -pW/2, true);
+                checkSnapZ(targetZ + depth/2, pW/2, false);
+
+                for (let m of this.meshes) {
+                    if (m === mesh || m.userData.deleted) continue;
+
+                    const mBBox = new THREE.Box3().setFromObject(m);
+                    
+                    // Giao nhau trục Z thì hút trục X
+                    const zOverlap = (targetZ - depth/2 < mBBox.max.z + threshold) && (targetZ + depth/2 > mBBox.min.z - threshold);
+                    if (zOverlap) {
+                        checkSnapX(targetX + width/2, mBBox.min.x, false); // Phải target -> Trái m
+                        checkSnapX(targetX - width/2, mBBox.max.x, true);  // Trái target -> Phải m
+                        checkSnapX(targetX - width/2, mBBox.min.x, true);  // Trái target -> Trái m
+                        checkSnapX(targetX + width/2, mBBox.max.x, false); // Phải target -> Phải m
+                    }
+
+                    // Giao nhau trục X thì hút trục Z
+                    const xOverlap = (bestX - width/2 < mBBox.max.x + threshold) && (bestX + width/2 > mBBox.min.x - threshold);
+                    if (xOverlap) {
+                        checkSnapZ(targetZ + depth/2, mBBox.min.z, false); // Dưới target -> Trên m
+                        checkSnapZ(targetZ - depth/2, mBBox.max.z, true);  // Trên target -> Dưới m
+                        checkSnapZ(targetZ - depth/2, mBBox.min.z, true);  // Trên target -> Trên m
+                        checkSnapZ(targetZ + depth/2, mBBox.max.z, false); // Dưới target -> Dưới m
+                    }
+                }
+
+                return { snappedX: bestX, snappedZ: bestZ };
+            },
+
+            toggleDragSnapMode(forceMode = null) {
+                if (forceMode === 'layer' || forceMode === 'gravity') {
+                    this.dragSnapMode = forceMode;
+                } else {
+                    this.dragSnapMode = this.dragSnapMode === 'layer' ? 'gravity' : 'layer';
+                }
+                const btn = document.getElementById('btn-drag-snap');
+                if (btn) {
+                    const isLayer = this.dragSnapMode === 'layer';
+                    btn.innerText = `🧲 Snap Kéo-Thả: ${isLayer ? 'Layer' : 'Gravity'}`;
+                    btn.style.borderColor = isLayer ? '#60a5fa' : '#f59e0b';
+                    btn.style.color = isLayer ? '#60a5fa' : '#f59e0b';
+                }
+                if (this.lblStatus) {
+                    this.lblStatus.innerText = this.dragSnapMode === 'layer'
+                        ? 'Đã bật Snap Layer: kéo thả sẽ bám tầng gần nhất.'
+                        : 'Đã bật Gravity: kéo thả sẽ rơi về mặt đỡ cao nhất.';
+                }
+            },
+
+            getSupportTopCandidates(tMinX, tMaxX, tMinZ, tMaxZ, excludeMesh = null) {
+                const supports = [170];
+                for (let m of this.meshes) {
+                    if (m === excludeMesh || m.userData.deleted) continue;
+                    const mBBox = new THREE.Box3().setFromObject(m);
+                    mBBox.expandByScalar(-1);
+                    if (tMinX < mBBox.max.x && tMaxX > mBBox.min.x && tMinZ < mBBox.max.z && tMaxZ > mBBox.min.z) {
+                        supports.push(mBBox.max.y);
+                    }
+                }
+                const unique = [...new Set(supports.map(v => Math.round(v * 1000) / 1000))];
+                unique.sort((a, b) => a - b);
+                return unique;
+            },
+
+            chooseSupportTop(supportTops, boxH, preferredTop = null) {
+                if (!supportTops || supportTops.length === 0) return 170;
+                if (this.dragSnapMode !== 'layer' || !Number.isFinite(preferredTop)) {
+                    return supportTops[supportTops.length - 1];
+                }
+                let bestSupport = supportTops[supportTops.length - 1];
+                let bestDiff = Infinity;
+                for (const top of supportTops) {
+                    const candidateTop = top + boxH;
+                    const diff = Math.abs(candidateTop - preferredTop);
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        bestSupport = top;
+                    }
+                }
+                return bestSupport;
+            },
+
+            onMouseMove(e) {
+                const rect = this.container.getBoundingClientRect();
+                this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                if (this.isDropMode && this.ghostBox) {
+                    this.raycaster.setFromCamera(this.mouse, this.camera);
+                    const dropPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -170); // Mặt sàn Pallet
+                    if (this.raycaster.ray.intersectPlane(dropPlane, this.intersectionPoint)) {
+                        const snap = 10;
+                        let snappedX = Math.round(this.intersectionPoint.x / snap) * snap;
+                        let snappedZ = Math.round(this.intersectionPoint.z / snap) * snap;
+                        
+                        let h = parseFloat(this.inpH.value) || 200;
+                        let l = parseFloat(this.inpL.value) || 400; 
+                        let w = parseFloat(this.inpW.value) || 300;
+                        const angle = Number.isFinite(this.dropPreviewAngle) ? this.dropPreviewAngle : parseInt(document.getElementById('inp-orient')?.value || 0);
+                        const quarterIdx = Math.abs(Math.round(angle / 90)) % 2; // 0 for 0/180, 1 for 90/270
+                        // Lật úp theo tùy chọn
+                        if (this.dropPreviewFlip === 'flipW') [w, h] = [h, w];
+                        else if (this.dropPreviewFlip === 'flipL') [l, h] = [h, l];
+                        const effL = quarterIdx === 0 ? l : w;
+                        const effW = quarterIdx === 0 ? w : l;
+
+                        // Cập nhật kích thước & hiển thị Ghost Box cho chế độ thả tay
+                        if (!this.ghostBox.userData) this.ghostBox.userData = {};
+                        if (this.ghostBox.userData.effL !== effL || this.ghostBox.userData.effW !== effW || this.ghostBox.userData.h !== h) {
+                            this.ghostBox.geometry.dispose();
+                            this.ghostBox.geometry = new THREE.BoxGeometry(effL, h, effW);
+                            this.ghostBox.userData.effL = effL;
+                            this.ghostBox.userData.effW = effW;
+                            this.ghostBox.userData.h = h;
+                        }
+                        this.ghostBox.rotation.set(0, THREE.MathUtils.degToRad(angle % 360), 0);
+                        this.ghostBox.visible = true;
+                        this.updateGhostInfo({
+                            angle,
+                            l,
+                            w,
+                            h,
+                            overhang: false,
+                            flip: this.dropPreviewFlip
+                        });
+                        
+                        const tMinX = snappedX - effL/2 + 1;
+                        const tMaxX = snappedX + effL/2 - 1;
+                        const tMinZ = snappedZ - effW/2 + 1;
+                        const tMaxZ = snappedZ + effW/2 - 1;
+                        const chosenSupportTop = this.getLowestClearSupportTop(tMinX, tMaxX, tMinZ, tMaxZ, h, null);
+                        const predictedY = chosenSupportTop + (h / 2);
+                        this.ghostBox.position.set(snappedX, predictedY, snappedZ);
+                        
+                        const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                        const isOverhang = (tMinX - 1 < -pLen/2 || tMaxX + 1 > pLen/2 || tMinZ - 1 < -500 || tMaxZ + 1 > 500);
+                        this.ghostBox.material.color.setHex(isOverhang ? 0xef4444 : 0x10b981);
+                this.updateGhostInfo({ angle, l, w, h, overhang: isOverhang, flip: this.dropPreviewFlip });
+                    }
+                    return;
+                }
+
+                if (!this.isDragging || !this.activeBoxId) return;
+                this.hasDragged = true;
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                
+                if (this.raycaster.ray.intersectPlane(this.dragPlane, this.intersectionPoint)) {
+                    const newPos = this.intersectionPoint.add(this.dragOffset);
+                    const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                    const data = this.boxesData.find(b => b.id === this.activeBoxId);
+                    if (mesh && data) {
+                        // Snap grid lưới 10mm
+                        const snap = 10;
+                        let snappedX = Math.round(newPos.x / snap) * snap;
+                        let snappedZ = Math.round(newPos.z / snap) * snap;
+                        
+                        // Hút nam châm (Auto-Snap)
+                        const magneticSnap = this.calculateMagneticSnap(mesh, snappedX, snappedZ);
+                        snappedX = magneticSnap.snappedX;
+                        snappedZ = magneticSnap.snappedZ;
+                        
+                        // Di chuyển khối thật mượt mà theo con trỏ chuột
+                        mesh.position.x = newPos.x;
+                        mesh.position.z = newPos.z;
+                        
+                        // Tính toán độ cao đặt (Layer/Gravity Snap) cho Ghost Box
+                        let predictedY = mesh.position.y;
+
+                        const width = data.angle === 0 ? data.l : data.w;
+                        const depth = data.angle === 0 ? data.w : data.l;
+                        
+                        const tMinX = snappedX - width/2 + 1;
+                        const tMaxX = snappedX + width/2 - 1;
+                        const tMinZ = snappedZ - depth/2 + 1;
+                        const tMaxZ = snappedZ + depth/2 - 1;
+
+                        const supportTops = this.getSupportTopCandidates(tMinX, tMaxX, tMinZ, tMaxZ, mesh);
+                        const chosenSupportTop = this.chooseSupportTop(supportTops, data.h, this.dragStartTopY);
+                        predictedY = chosenSupportTop + (data.h / 2);
+
+                        // Cập nhật vị trí bóng mờ (Ghost Box) kèm tọa độ Y đã dự đoán
+                        if (this.ghostBox) {
+                            this.ghostBox.position.set(snappedX, predictedY, snappedZ);
+                            
+                            // Cảnh báo màu Đỏ nếu bóng mờ bị lồi ra khỏi biên Pallet
+                            const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                            const pWid = 1000;
+                            const palletMinX = (data.offsetX || 0) - pLen/2;
+                            const palletMaxX = (data.offsetX || 0) + pLen/2;
+                            const palletMinZ = -pWid/2;
+                            const palletMaxZ = pWid/2;
+                            
+                            const isOverhang = (tMinX - 1 < palletMinX || tMaxX + 1 > palletMaxX || tMinZ - 1 < palletMinZ || tMaxZ + 1 > palletMaxZ);
+                            
+                            this.ghostBox.material.color.setHex(isOverhang ? 0xef4444 : 0x10b981);
+                        }
+                    }
+                }
+            },
+            
+            onMouseUp(e) {
+                if (this.isDragging) {
+                    this.isDragging = false;
+                    this.dragStartTopY = null;
+                    this.controls.enabled = true; // Bật lại OrbitCamera
+                    
+                    if (this.ghostBox) {
+                        this.ghostBox.visible = false;
+                    }
+                    
+                    const mesh = this.meshes.find(m => m.userData.id === this.activeBoxId);
+                    const data = this.boxesData.find(b => b.id === this.activeBoxId);
+                    
+                    if (mesh && data && this.ghostBox) {
+                        const targetX = this.ghostBox.position.x;
+                        const targetY = this.ghostBox.position.y;
+                        const targetZ = this.ghostBox.position.z;
+                        
+                        // Thả rớt (Gravity Drop)
+                        mesh.position.set(targetX, mesh.position.y, targetZ);
+                        gsap.to(mesh.position, { y: targetY, duration: 0.2, ease: "power2.out" });
+                        
+                        const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                        data.x = targetX + (pLen/2) - data.offsetX;
+                        data.z = targetY;
+                        data.y = targetZ + 500;
+                        
+                        this.updateStats();
+                        this.updateCartonUI(data);
+                    }
+                }
+            },
+            
+            onKeyDown(e) {
+                // Không xử lý phím khi đang nhập form
+                if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT') return;
+
+                // Cho phép xoay trước khi đặt pallet ở chế độ thả tay (ghost box)
+                if (this.isDropMode && !this.activeBoxId) {
+                    const key = e.key.toLowerCase();
+                    if (key === 'r' || key === 'q' || key === 'e') {
+                        const delta = key === 'q' ? -90 : (key === 'e' ? 90 : 90);
+                        this.dropPreviewAngle = ((this.dropPreviewAngle + delta) % 360 + 360) % 360; // chuẩn hóa 0-359
+                        const orientSel = document.getElementById('inp-orient');
+                        if (orientSel) orientSel.value = (Math.abs(Math.round(this.dropPreviewAngle / 90)) % 2 === 0) ? 0 : 90;
+                        this.updateGhostInfo({
+                            angle: this.dropPreviewAngle,
+                            l: parseFloat(this.inpL.value) || 400,
+                            w: parseFloat(this.inpW.value) || 300,
+                            h: parseFloat(this.inpH.value) || 200,
+                            overhang: false,
+                            flip: this.dropPreviewFlip
+                        });
+                        this.lblStatus.innerText = `Đang xoay hướng đặt thủ công: ${this.dropPreviewAngle}° (Q/E/R để đổi)`;
+                        return;
+                    } else if (key === 'f' || key === 't') {
+                        // F: lật ngang (W -> H), T: lật dài (L -> H)
+                        this.dropPreviewFlip = key === 'f'
+                            ? (this.dropPreviewFlip === 'flipW' ? 'none' : 'flipW')
+                            : (this.dropPreviewFlip === 'flipL' ? 'none' : 'flipL');
+                        this.updateGhostInfo({
+                            angle: this.dropPreviewAngle,
+                            l: parseFloat(this.inpL.value) || 400,
+                            w: parseFloat(this.inpW.value) || 300,
+                            h: parseFloat(this.inpH.value) || 200,
+                            overhang: false,
+                            flip: this.dropPreviewFlip
+                        });
+                        this.lblStatus.innerText = this.dropPreviewFlip === 'none'
+                            ? 'Đã tắt chế độ lật. Chồng theo layer hiện tại với kích thước chuẩn.'
+                            : (this.dropPreviewFlip === 'flipW' ? 'Đang lật ngang: W trở thành H.' : 'Đang lật chiều dài: L trở thành H.');
+                        return;
+                    }
+                }
+
+                if (!this.activeBoxId) return;
+
+                switch(e.key.toLowerCase()) {
+                    case 'r': this.rotateActive(); break;
+                    case 'f': this.flipActive(); break;
+                    case 't': this.rollActive(); break;
+                    case 'delete': 
+                    case 'backspace': 
+                        this.removeActive(); break;
+                    case 'arrowleft': this.nudgeCarton(-50, 0, 0); break;
+                    case 'arrowright': this.nudgeCarton(50, 0, 0); break;
+                    case 'arrowup': this.nudgeCarton(0, -50, 0); break;
+                    case 'arrowdown': this.nudgeCarton(0, 50, 0); break;
+                }
             },
 
             resetView() {
@@ -1022,11 +2118,21 @@
                 this.meshes = [];
                 this.totalCartonsLoaded = 0;
                 document.getElementById('carton-list').innerHTML = '';
+                
+                if (this.layerLabelsGroup) {
+                    while(this.layerLabelsGroup.children.length > 0) {
+                        const child = this.layerLabelsGroup.children[0];
+                        if(child.material.map) child.material.map.dispose();
+                        child.material.dispose();
+                        this.layerLabelsGroup.remove(child);
+                    }
+                }
             },
             
             togglePlay(forcePlay=null) {
                 if (forcePlay !== null) this.isPlaying = !forcePlay; 
-                if (this.totalCartonsLoaded >= this.boxesData.length && !this.isPlaying) return;
+                const validBoxes = this.boxesData.filter(b => !b.deleted);
+                if (this.totalCartonsLoaded >= validBoxes.length && !this.isPlaying) return;
                 
                 this.isPlaying = !this.isPlaying;
                 const btn = document.getElementById('btn-play');
@@ -1036,8 +2142,9 @@
                 if (this.isPlaying) {
                     icn.innerText = '⏸'; txt.innerText = 'Pause'; btn.style.background = '#f59e0b';
                     this.playInterval = setInterval(() => {
-                        if (this.totalCartonsLoaded >= this.boxesData.length) {
-                            this.togglePlay(); this.lblStatus.innerText = 'Hoàn tất mô phỏng Palletizing!';
+                        if (this.totalCartonsLoaded >= validBoxes.length) {
+                            this.togglePlay(); 
+                            if (this.lblStatus) this.lblStatus.innerText = '✅ Hoàn tất mô phỏng Palletizing!';
                         } else {
                             this.drawNextCarton();
                         }
@@ -1048,6 +2155,124 @@
                 }
             },
             
+            createLabelTexture(text, bgColorHex) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+
+                // Tô màu nền cho thùng
+                ctx.fillStyle = bgColorHex;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Vẽ viền nhạt để thùng nhìn chi tiết hơn
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 8;
+                ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+
+                // Vẽ số thứ tự ở chính giữa
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 100px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+                return new THREE.CanvasTexture(canvas);
+            },
+
+            createLayerLabelSprite(message, colorHex) {
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                const fontSize = 28;
+                context.font = `bold ${fontSize}px sans-serif`;
+                const textWidth = context.measureText(message).width;
+                
+                canvas.width = textWidth + 32;
+                canvas.height = fontSize + 24;
+                
+                // Vẽ nền
+                context.fillStyle = 'rgba(17, 24, 39, 0.85)';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Vẽ viền
+                context.strokeStyle = colorHex;
+                context.lineWidth = 3;
+                context.strokeRect(1.5, 1.5, canvas.width - 3, canvas.height - 3);
+                
+                // Vẽ chữ
+                context.fillStyle = '#ffffff';
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                context.fillText(message, canvas.width / 2, canvas.height / 2 + 2);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false }); 
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.renderOrder = 999; // Ưu tiên hiển thị đè lên trên khối
+                
+                const scale = 1.8;
+                sprite.scale.set(canvas.width * scale, canvas.height * scale, 1);
+                
+                return sprite;
+            },
+
+            updateLayerLabels() {
+                if (!this.layerLabelsGroup) return;
+                while(this.layerLabelsGroup.children.length > 0) {
+                    const child = this.layerLabelsGroup.children[0];
+                    if(child.material.map) child.material.map.dispose();
+                    child.material.dispose();
+                    this.layerLabelsGroup.remove(child);
+                }
+
+                const activeBoxes = this.boxesData.filter((b, i) => !b.deleted && (i < this.totalCartonsLoaded || b.isManual));
+                if (activeBoxes.length === 0) return;
+
+                const palletsMap = new Map();
+                activeBoxes.forEach(b => {
+                    if (!palletsMap.has(b.pIdx)) palletsMap.set(b.pIdx, []);
+                    palletsMap.get(b.pIdx).push(b);
+                });
+
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+
+                palletsMap.forEach((boxes, pIdx) => {
+                    const layers = [];
+                    boxes.forEach(b => {
+                        const topZ = b.z + b.h / 2;
+                        // Gom nhóm các hộp có cùng mặt phẳng trần (Dung sai 10mm)
+                        let foundLayer = layers.find(l => Math.abs(l.topZ - topZ) < 10);
+                        if (foundLayer) {
+                            foundLayer.boxes.push(b);
+                            // Cập nhật lại trung bình độ cao mặt phẳng
+                            foundLayer.topZ = (foundLayer.topZ * (foundLayer.boxes.length - 1) + topZ) / foundLayer.boxes.length;
+                        } else {
+                            layers.push({ topZ: topZ, boxes: [b] });
+                        }
+                    });
+
+                    layers.sort((a, b) => a.topZ - b.topZ);
+
+                    layers.forEach((layer, idx) => {
+                        const count = layer.boxes.length;
+                        const message = `Lớp ${idx + 1}: ${count} hộp`;
+                        const sprite = this.createLayerLabelSprite(message, '#10b981');
+                        
+                        let sumX = 0, sumZ = 0;
+                        layer.boxes.forEach(b => {
+                            sumX += (b.x - pLen/2 + b.offsetX);
+                            sumZ += (b.y - 500);
+                        });
+                        // Tính toán tâm của lớp hàng để treo nhãn
+                        const avgX = sumX / count;
+                        const avgZ = sumZ / count;
+                        
+                        sprite.position.set(avgX, layer.topZ + 60, avgZ); // Lơ lửng cách mặt lớp 60mm
+                        this.layerLabelsGroup.add(sprite);
+                    });
+                });
+            },
+
             drawNextCarton(isManual = false) {
                 const idx = isManual ? (this.boxesData.length - 1) : this.totalCartonsLoaded;
                 const data = this.boxesData[idx];
@@ -1055,7 +2280,8 @@
                 
                 const w = data.angle === 0 ? data.l : data.w;
                 const d = data.angle === 0 ? data.w : data.l;
-                const geo = new THREE.BoxGeometry(w - 2, data.h - 2, d - 2); 
+                // Tetris-style: không tạo khe hở giữa các khối
+                const geo = new THREE.BoxGeometry(w, data.h, d); 
                 
                 if (!this.skuColorMap[data.sku]) {
                     const hue = Math.floor(Math.random() * 360);
@@ -1065,8 +2291,14 @@
                 }
                 const hexColor = this.skuColorMap[data.sku];
                 
-                const mat = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.6, metalness: 0.2 });
-                const mesh = new THREE.Mesh(geo, mat);
+                // Tạo chất liệu (Material) có chứa texture dán nhãn số
+                const boxNum = idx + 1;
+                const tex = this.createLabelTexture(boxNum.toString(), hexColor);
+                const matTex = new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness: 0.6, metalness: 0.2 });
+                const matPlain = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.6, metalness: 0.2 });
+                const materials = [matTex, matTex, matTex, matPlain, matTex, matTex]; // Dán nhãn lên tất cả trừ mặt đáy (bottom)
+                
+                const mesh = new THREE.Mesh(geo, materials);
                 mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })));
                 mesh.castShadow = true; mesh.receiveShadow = true;
                 
@@ -1082,6 +2314,9 @@
                 this.meshes.push(mesh);
                 
                 gsap.from(mesh.position, { y: data.z + 800, duration: 0.5, ease: "power2.out" });
+                if (!this.isLoadingState) {
+                    gsap.from(mesh.position, { y: data.z + 800, duration: 0.5, ease: "power2.out" });
+                }
 
                 this.addToListUI(data, hexColor);
                 if (!isManual) this.totalCartonsLoaded++;
@@ -1095,19 +2330,41 @@
                 div.innerHTML = `
                     <div class="carton-title">
                         <span class="carton-name" style="color: ${colorHex}">[P${data.pIdx+1}] ${data.sku}</span>
-                        <span class="carton-layer" style="color: ${colorHex}; border: 1px solid ${colorHex}55">${data.isManual ? 'MANUAL' : 'L' + data.layer}</span>
+                        <div>
+                            <span class="carton-layer" style="color: ${colorHex}; border: 1px solid ${colorHex}55">${data.isManual ? 'MANUAL' : 'L' + data.layer}</span>
+                            <span style="color: #ef4444; margin-left: 8px; cursor: pointer; padding: 2px;" onclick="event.stopPropagation(); app.activateCarton(${data.id}); app.removeActive();" title="Xóa thùng này">✖</span>
+                        </div>
+                    </div>
+                    <div class="carton-coord" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                        Tọa độ (X, Y, Z): ${Math.round(data.x)}, ${Math.round(data.y)}, ${Math.round(data.z)}
                     </div>
                 `;
                 div.onclick = () => this.activateCarton(data.id);
                 document.getElementById('carton-list').prepend(div);
             },
             
+            updateCartonUI(data) {
+                const item = document.getElementById(`ui-item-${data.id}`);
+                if (item) {
+                    const coordDiv = item.querySelector('.carton-coord');
+                    if (coordDiv) {
+                        coordDiv.innerText = `Tọa độ (X, Y, Z): ${Math.round(data.x)}, ${Math.round(data.y)}, ${Math.round(data.z)}`;
+                    }
+                }
+            },
+            
             updateStats() {
+                if (this.isLoadingState) return; // Không cần cập nhật UI nhiều lần khi đang Restore
                 let currentCount = 0;
                 let currentWeight = 0;
                 let totalCBM = 0;
                 let highestPalletIndex = -1;
                 let maxZ = 170; // Sàn gỗ cơ bản
+
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                let maxZ_P0 = 170;
+                let hasCartons = false;
                 
                 for(let i = 0; i < this.boxesData.length; i++) {
                     const b = this.boxesData[i];
@@ -1115,11 +2372,30 @@
                     if (b && !b.deleted && (i < this.totalCartonsLoaded || b.isManual)) {
                         currentCount++;
                         currentWeight += b.weight || 0;
-                        totalCBM += (b.cbm || 0);
+                        const boxCbm = this.calcBoxCbm(b);
+                        totalCBM += boxCbm;
+                        b.cbm = boxCbm; // chuẩn hóa dữ liệu cũ thiếu cbm
                         if (b.pIdx > highestPalletIndex) highestPalletIndex = b.pIdx;
                         
                         let topOfBox = b.z + (b.h / 2);
                         if (topOfBox > maxZ) maxZ = topOfBox;
+
+                        if (b.pIdx === 0) {
+                            hasCartons = true;
+                            const effL = b.angle === 0 ? b.l : b.w;
+                            const effW = b.angle === 0 ? b.w : b.l;
+                            
+                            const bMinX = b.x - effL/2;
+                            const bMaxX = b.x + effL/2;
+                            const bMinY = b.y - effW/2;
+                            const bMaxY = b.y + effW/2;
+                            
+                            if (bMinX < minX) minX = bMinX;
+                            if (bMaxX > maxX) maxX = bMaxX;
+                            if (bMinY < minY) minY = bMinY;
+                            if (bMaxY > maxY) maxY = bMaxY;
+                            if (topOfBox > maxZ_P0) maxZ_P0 = topOfBox;
+                        }
                     }
                 }
                 
@@ -1132,6 +2408,43 @@
                 const zLabel = document.getElementById('lbl-max-z');
                 zLabel.innerText = Math.floor(maxZ);
                 if (maxZ > 2600) { zLabel.style.color = '#ef4444'; } else { zLabel.style.color = 'white'; }
+
+                // --- Update Spatial Dimensions UI ---
+                const pLen = this.inpPallet.value === "1.9" ? 1900 : 1200;
+                const pWid = 1000;
+                const pMaxH = 2600;
+
+                let usedL = 0, usedW = 0;
+                let isOverhang = false;
+                if (hasCartons) {
+                    usedL = maxX - minX;
+                    usedW = maxY - minY;
+                    // Check nếu tọa độ các mép hộp tràn ra khỏi giới hạn Pallet (Dung sai 1mm)
+                    if (minX < -1 || maxX > pLen + 1 || minY < -1 || maxY > pWid + 1) {
+                        isOverhang = true;
+                    }
+                }
+
+                const freeL = Math.max(0, pLen - usedL);
+                const freeW = Math.max(0, pWid - usedW);
+                const freeH = Math.max(0, pMaxH - maxZ_P0);
+
+                document.getElementById('lbl-base-dim').innerText = `${pLen} x ${pWid} x 170`;
+                document.getElementById('lbl-limit-dim').innerText = `${pLen} x ${pWid} x ${pMaxH}`;
+                
+                const usedDimEl = document.getElementById('lbl-used-dim');
+                usedDimEl.innerText = `${usedL.toFixed(0)} x ${usedW.toFixed(0)} x ${maxZ_P0.toFixed(0)}`;
+                usedDimEl.style.color = isOverhang ? '#ef4444' : '#3b82f6';
+                
+                const warnEl = document.getElementById('lbl-overhang-warn');
+                if (warnEl) warnEl.style.display = isOverhang ? 'inline-block' : 'none';
+                
+                document.getElementById('lbl-free-dim').innerText = `${freeL.toFixed(0)} x ${freeW.toFixed(0)} x ${freeH.toFixed(0)}`;
+                
+                // Cập nhật nhãn đếm hộp 3D
+                this.updateLayerLabels();
+                
+                this.saveState();
             }
         };
 

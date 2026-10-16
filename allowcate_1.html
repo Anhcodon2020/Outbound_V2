@@ -1,13 +1,27 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Danh sách Release (Allocate View 1)</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
+        body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #f0f2f5; margin: 20px; }
         h1 { color: #333; text-align: center; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .container { max-width: 1300px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .content-grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+        .left-panel { border: 1px solid #ddd; border-radius: 8px; background: #fafbfc; padding: 12px; position: sticky; top: 12px; }
+        .left-panel h3 { margin: 0 0 8px 0; color: #333; font-size: 15px; }
+        .left-panel .totals { display: flex; gap: 8px; margin: 0 0 8px 0; font-size: 12px; flex-wrap: wrap; }
+        .left-panel .totals span { background: #eef4ff; border: 1px solid #d0defc; border-radius: 4px; padding: 4px 6px; }
+        #skuPalletTable th, #skuPalletTable td { padding: 6px; font-size: 12px; border-bottom: 1px solid #e7e7e7; }
+        #skuPalletTable th { background: #1f6feb; color: #fff; position: sticky; top: 0; }
+        #skuPalletTableWrap { max-height: 68vh; overflow: auto; border: 1px solid #e3e3e3; border-radius: 6px; background: #fff; }
+        @media (max-width: 1200px) {
+            .content-grid { grid-template-columns: 1fr; }
+            .left-panel { position: static; }
+            #skuPalletTableWrap { max-height: 320px; }
+        }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #007bff; color: white; }
@@ -24,21 +38,63 @@
         .close:hover, .close:focus { color: black; text-decoration: none; cursor: pointer; }
         tr.clickable-row { cursor: pointer; transition: background 0.2s; }
         tr.clickable-row:hover { background-color: #e2e6ea; }
+        .page-loading { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.42); backdrop-filter: blur(3px); z-index: 3000; align-items: center; justify-content: center; }
+        .page-loading.show { display: flex; }
+        .loading-card { min-width: 260px; padding: 24px 28px; border-radius: 16px; background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%); box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25); text-align: center; border: 1px solid rgba(13, 110, 253, 0.12); }
+        .loading-spinner { width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 50%; border: 4px solid #dbeafe; border-top-color: #0d6efd; animation: spin 0.9s linear infinite; }
+        .loading-title { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+        .loading-text { font-size: 13px; color: #64748b; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
+<div id="pageLoading" class="page-loading" aria-live="polite" aria-busy="true">
+    <div class="loading-card">
+        <div class="loading-spinner"></div>
+        <div class="loading-title">Đang tải dữ liệu</div>
+        <div id="loadingText" class="loading-text">Vui lòng chờ trong giây lát...</div>
+    </div>
+</div>
+
 <div class="container">
     <!-- Thanh điều hướng -->
     <div class="nav">
-        <a href="/">🏠 Trang chủ</a>
-        <a href="/releasing.html">📦 Releasing</a>
-        <a href="/inventory.html">🏭 Inventory</a>
-        <a href="/allowcate_1.html">📋 Allocate View 1</a>
-        <a href="/create_picking_list.html">📝 Picking List</a>
+        <a href="/">Trang chủ</a>
+        <a href="/releasing.html">Releasing</a>
+        <a href="/inventory.html">Inventory</a>
+        <a href="/allowcate_1.html">Allocate View 1</a>
+        <a href="/create_picking_list.html">Picking List</a>
     </div>
 
     <h1>Danh sách Release Chi Tiết</h1>
+
+    <div class="content-grid">
+        <div class="left-panel">
+            <h3>Thống kê Pallet theo SKU</h3>
+            <div class="totals">
+                <span>Total Carton: <strong id="leftTotalCarton">0</strong></span>
+                <span>Total CBM: <strong id="leftTotalCbm">0.000</strong></span>
+            </div>
+            <div id="skuPalletTableWrap">
+                <table id="skuPalletTable" style="margin-top:0;">
+                    <thead>
+                        <tr>
+                            <th>FDC</th>
+                            <th>SKU</th>
+                            <th style="text-align:right;">Số Carton</th>
+                            <th style="text-align:center;">Loại Pallet</th>
+                            <th style="text-align:right;">Số Pallet</th>
+                            <th style="text-align:right;">Số CBM</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="6" style="text-align:center;">Đang tải...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="right-panel">
 
     <!-- Thống kê theo Hub DC -->
     <div style="margin-bottom: 20px; max-width: 800px;">
@@ -56,9 +112,9 @@
 
     <!-- Thống kê ĐÃ CHỌN (Selection Summary) -->
     <div id="selectedStats" style="background: #e8f5e9; padding: 10px 15px; border-radius: 5px; margin-bottom: 15px; display: none; align-items: center; gap: 20px; border: 1px solid #c3e6cb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-        <span style="font-weight: bold; color: #155724; font-size: 1.1em;">✅ Đã chọn: <span id="selCount">0</span> dòng</span>
-        <span style="font-size: 1.1em;">📦 Thực xuất: <span id="selQty" style="font-weight:bold; color:#333;">0</span> ctn</span>
-        <span style="font-size: 1.1em;">📦 Tổng CBM: <span id="selCbm" style="font-weight:bold; color:#d63384;">0.000</span> m³</span>
+        <span style="font-weight: bold; color: #155724; font-size: 1.1em;">Đã chọn: <span id="selCount">0</span> dòng</span>
+        <span style="font-size: 1.1em;">Thực xuất: <span id="selQty" style="font-weight:bold; color:#333;">0</span> ctn</span>
+        <span style="font-size: 1.1em;">Tổng CBM: <span id="selCbm" style="font-weight:bold; color:#d63384;">0.000</span> m³</span>
     </div>
 
     <!-- Ô tìm kiếm -->
@@ -70,8 +126,8 @@
             <option value="">-- Tất cả Inventory --</option>
             <option value="yes">Inventory > 0</option>
         </select>
-        <input type="text" id="searchInput" class="search-input" placeholder="🔍 Tìm Release Key, SKU, PO, FDC..." oninput="filterData()">
-        <button onclick="exportPicking()" style="padding: 10px 15px; background: #ffc107; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: #333;">📤 Export Picking</button>
+        <input type="text" id="searchInput" class="search-input" placeholder="Tìm Release Key, SKU, PO, FDC..." oninput="filterData()">
+        <button onclick="exportPicking()" style="padding: 10px 15px; background: #ffc107; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: #333;">Export Picking</button>
     </div>
 
     <!-- Bảng dữ liệu -->
@@ -86,17 +142,21 @@
                 <th>Hub DC</th>
                 <th>SKU</th>
                 <th>Inventory Qty</th>
+                <th>AX</th>
                 <th>Remaining</th>
                 <th>Date Rcv</th>
+                <th style="text-align: center;">Due Date (Days)</th>
                 <th>Total CBM (m³)</th>
                 <th style="text-align: right;">Số Carton (Qty)</th>
                 <th style="text-align: center;">Chọn <input type="checkbox" id="masterCheck" onclick="toggleAll(this)"></th>
             </tr>
         </thead>
         <tbody>
-            <tr><td colspan="13" style="text-align:center">Đang tải dữ liệu...</td></tr>
+            <tr><td colspan="15" style="text-align:center">Đang tải dữ liệu...</td></tr>
         </tbody>
     </table>
+        </div>
+    </div>
 </div>
 
 <!-- Modal Chi tiết Tồn kho -->
@@ -127,31 +187,145 @@
         return date.toLocaleDateString('vi-VN');
     }
 
+    // Quy tắc CBM: dùng số lượng nhỏ hơn giữa Order và Inventory
+    function getQtyForCbm(orderQty, inventoryQty) {
+        const order = Number(orderQty) || 0;
+        const inv = Number(inventoryQty) || 0;
+        return order < inv ? order : inv;
+    }
+
+    // Quy tắc chọn số lượng xuất: luôn lấy số nhỏ hơn giữa Order và Inventory
+    function getPickQty(orderQty, inventoryQty) {
+        const order = Number(orderQty) || 0;
+        const inv = Number(inventoryQty) || 0;
+        return order < inv ? order : inv;
+    }
+
+    function normalizePalletKind(value) {
+        if (value === null || value === undefined) return '';
+        return String(value).trim().toLowerCase().replace(/[\s_]+/g, '');
+    }
+
+    function getPalletInfoByKind(kindpallet, totalCbm) {
+        const normalized = normalizePalletKind(kindpallet);
+        const cbm = Number(totalCbm) || 0;
+
+        if (!normalized) {
+            return {
+                label: 'Unknown',
+                palletCount: cbm > 0 ? cbm : 0,
+                leftover: 0,
+                capacity: 0,
+                isOversize: true
+            };
+        }
+
+        if (normalized.includes('1m2') || normalized.includes('1.2') || normalized.includes('m2')) {
+            const capacity = 3;
+            const palletCount = cbm > 0 ? Math.ceil(cbm / capacity) : 0;
+            const leftover = cbm > 0 ? cbm - ((palletCount - 1) * capacity) : 0;
+            return { label: '1m2', palletCount, leftover, capacity, isOversize: false };
+        }
+
+        if (normalized.includes('1m6') || normalized.includes('1.6') || normalized.includes('m6')) {
+            const capacity = 4;
+            const palletCount = cbm > 0 ? Math.ceil(cbm / capacity) : 0;
+            const leftover = cbm > 0 ? cbm - ((palletCount - 1) * capacity) : 0;
+            return { label: '1m6/4', palletCount, leftover, capacity, isOversize: false };
+        }
+
+        if (normalized.includes('1m9') || normalized.includes('1.9') || normalized.includes('m9')) {
+            const capacity = 4.75;
+            const palletCount = cbm > 0 ? Math.ceil(cbm / capacity) : 0;
+            const leftover = cbm > 0 ? cbm - ((palletCount - 1) * capacity) : 0;
+            return { label: '1m9/4.75', palletCount, leftover, capacity, isOversize: false };
+        }
+
+        if (normalized.includes('oversize') || normalized.includes('over') || normalized.includes('large') || normalized.includes('custom')) {
+            return {
+                label: 'Oversize',
+                palletCount: cbm > 0 ? cbm : 0,
+                leftover: 0,
+                capacity: 0,
+                isOversize: true
+            };
+        }
+
+        return {
+            label: 'Unknown',
+            palletCount: cbm > 0 ? cbm : 0,
+            leftover: 0,
+            capacity: 0,
+            isOversize: true
+        };
+    }
+
+    function showPageLoading(message = 'Vui lòng chờ trong giây lát...') {
+        const overlay = document.getElementById('pageLoading');
+        const text = document.getElementById('loadingText');
+        if (text) text.innerText = message;
+        if (overlay) overlay.classList.add('show');
+    }
+
+    function hidePageLoading() {
+        const overlay = document.getElementById('pageLoading');
+        if (overlay) overlay.classList.remove('show');
+    }
+
+    function showToast(icon, title, text = '') {
+        return Swal.fire({
+            icon,
+            title,
+            text,
+            confirmButtonText: 'Đóng',
+            confirmButtonColor: '#0d6efd'
+        });
+    }
+
+    function confirmBox({ title, text, icon = 'question', confirmButtonText = 'Đồng ý', cancelButtonText = 'Hủy' }) {
+        return Swal.fire({
+            title,
+            text,
+            icon,
+            showCancelButton: true,
+            confirmButtonText,
+            cancelButtonText,
+            confirmButtonColor: '#0d6efd',
+            cancelButtonColor: '#6c757d'
+        });
+    }
+
+    window.alert = function(message) {
+        showToast('info', 'Thông báo', String(message || ''));
+    };
+
     // Hàm render bảng
     function renderTable(data) {
         currentViewData = data;
-        renderHubSummary(data); // Cập nhật bảng thống kê
+        renderHubSummary(data); // Cập nhật bảng th�'ng kê
+        renderSkuPalletSummary(data);
         const tbody = document.querySelector('#releaseTable tbody');
         tbody.innerHTML = '';
 
         const masterCheck = document.getElementById('masterCheck');
         if (masterCheck) {
-            const allSelected = data.length > 0 && data.every(item => selectedIds.has(item.id));
+            const selectableItems = data.filter(item => (Number(item.release_qty) || 0) > 0);
+            const allSelected = selectableItems.length > 0 && selectableItems.every(item => selectedIds.has(item.id));
             masterCheck.checked = allSelected;
         }
 
-        // Map Master Data để lấy CBM cho tính toán tổng hợp
+        // Map Master Data �'�f lấy CBM cho tính toán t�.ng hợp
         const masterMap = new Map(masterData.map(m => [m.sku, Number(m.cbm) || 0]));
 
-        // Tính toán số lượng còn lại (Remaining) theo logic trừ dần dựa trên các dòng ĐÃ CHỌN
+        // Tính toán s�' lượng còn lại (Remaining) theo logic trừ dần dựa trên các dòng Đ�f CH�ON
         const runningStock = new Map();
         let totalSelectedQty = 0;
         let totalSelectedCbm = 0;
 
-        // Duyệt qua toàn bộ danh sách (đã sort) để tính toán trừ dần và tổng hợp
+        // Duy�?t qua toàn b�T danh sách (�'ã sort) �'�f tính toán trừ dần và t�.ng hợp
         preparedData.forEach(item => {
              const key = `${item.parent_po}|${item.sku}`;
-             // Khởi tạo tồn kho ban đầu cho key này nếu chưa có
+             // Kh�Yi tạo t�"n kho ban �'ầu cho key này nếu chưa có
              if (!runningStock.has(key)) {
                  runningStock.set(key, item.inventory_qty || 0);
              }
@@ -160,25 +334,26 @@
              if (selectedIds.has(item.id)) {
                  const order = Number(item.release_qty) || 0;
                  // Nếu order < inventory: còn lại = inventory - order
-                 // Nếu inventory < order: còn lại = 0 (trừ hết inventory hiện có)
-                 // Số lượng thực tế lấy (used) = min(order, current_stock)
+                 // Nếu inventory < order: còn lại = 0 (trừ hết inventory hi�?n có)
+                 // S�' lượng thực tế lấy (used) = min(order, current_stock)
                  const used = (order < current) ? order : current;
                  const rem = current - used;
                  
                  runningStock.set(key, rem);
                  item.dynamic_remaining = rem;
                  
-                 // Cộng dồn thống kê
+                 // C�Tng d�"n th�'ng kê
                  totalSelectedQty += used;
                  const itemCbm = masterMap.get(item.sku) || 0;
-                 totalSelectedCbm += (used * itemCbm);
+                 const qtyForCbm = getQtyForCbm(item.release_qty, item.inventory_qty);
+                 totalSelectedCbm += (qtyForCbm * itemCbm);
 
              } else {
                  item.dynamic_remaining = current;
              }
         });
 
-        // Cập nhật giao diện thống kê Selected
+        // Cập nhật giao di�?n th�'ng kê Selected
         const statsDiv = document.getElementById('selectedStats');
         if (selectedIds.size > 0) {
             statsDiv.style.display = 'flex';
@@ -190,7 +365,7 @@
         }
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center">Không có dữ liệu phù hợp</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="15" style="text-align:center">Không có dữ liệu phù hợp</td></tr>';
             return;
         }
 
@@ -198,9 +373,13 @@
             const row = document.createElement('tr');
             row.classList.add('clickable-row');
             row.title = 'Click để xem chi tiết tồn kho';
-            row.onclick = () => openModal(item); // Truyền toàn bộ item để lấy ParentPO
+            row.onclick = () => openModal(item); // Truyền toàn b�T item �'�f lấy ParentPO
             const isChecked = selectedIds.has(item.id) ? 'checked' : '';
+            const hasOrderQty = (Number(item.release_qty) || 0) > 0;
             const isDisabled = (!isChecked && item.dynamic_remaining === 0) ? 'disabled' : '';
+            const checkboxHtml = hasOrderQty
+                ? `<input type="checkbox" onclick="toggleRow(event, ${item.id})" ${isChecked} ${isDisabled}>`
+                : '';
 
             row.innerHTML = `
                 <td>${item.release_key || ''}</td>
@@ -211,11 +390,13 @@
                 <td>${item.hub_dc || ''}</td>
                 <td><strong>${item.sku || ''}</strong></td>
                 <td style="font-weight:bold; color: ${item.inventory_qty >= item.release_qty ? '#28a745' : '#dc3545'}">${item.inventory_qty}</td>
+                <td style="font-weight:bold; color:#6610f2;">${item.ax_qty || 0}</td>
                 <td style="font-weight:bold; color: ${item.dynamic_remaining === 0 ? '#dc3545' : '#6610f2'}">${item.dynamic_remaining}</td>
                 <td>${item.date_rcv_str || ''}</td>
+                <td style="text-align:center;"><span style="${item.due_date_class}">${item.due_date_display}</span></td>
                 <td style="font-weight:bold; color: #0d6efd;">${item.total_cbm || '0.000'}</td>
                 <td class="qty-col">${item.release_qty || 0}</td>
-                <td style="text-align:center;"><input type="checkbox" onclick="toggleRow(event, ${item.id})" ${isChecked} ${isDisabled}></td>
+                <td style="text-align:center;">${checkboxHtml}</td>
             `;
             tbody.appendChild(row);
         });
@@ -224,6 +405,7 @@
     function toggleAll(source) {
         const checked = source.checked;
         currentViewData.forEach(item => {
+            if ((Number(item.release_qty) || 0) <= 0) return;
             if (checked) selectedIds.add(item.id);
             else selectedIds.delete(item.id);
         });
@@ -237,7 +419,7 @@
         renderTable(currentViewData);
     }
 
-    // Hàm render bảng thống kê Hub
+    // Hàm render bảng th�'ng kê Hub
     function renderHubSummary(data) {
         const tbody = document.querySelector('#summaryTable tbody');
         tbody.innerHTML = '';
@@ -250,18 +432,22 @@
         const summary = {};
         let totalQty = 0;
         let totalCbm = 0;
+        const masterMap = new Map(masterData.map(m => [m.sku, Number(m.cbm) || 0]));
 
         data.forEach(item => {
             const hub = item.hub_dc || 'Khác';
             
             if (!summary[hub]) summary[hub] = { qty: 0, cbm: 0 };
             
-            const qty = Number(item.release_qty) || 0;
-            const cbm = parseFloat(item.total_cbm) || 0;
+            const invQty = Number(item.inventory_qty) || 0;
+            const orderQty = Number(item.release_qty) || 0;
+            const cbmPerCarton = masterMap.get(item.sku) || 0;
+            const cbmQty = getQtyForCbm(orderQty, invQty);
+            const cbm = cbmQty * cbmPerCarton;
             
-            summary[hub].qty += qty;
+            summary[hub].qty += invQty;
             summary[hub].cbm += cbm;
-            totalQty += qty;
+            totalQty += invQty;
             totalCbm += cbm;
         });
 
@@ -275,7 +461,7 @@
             tbody.appendChild(row);
         });
 
-        // Dòng tổng cộng
+        // Dòng t�.ng c�Tng
         const totalRow = document.createElement('tr');
         totalRow.style.backgroundColor = '#f0f2f5';
         totalRow.innerHTML = `
@@ -286,7 +472,110 @@
         tbody.appendChild(totalRow);
     }
 
-    // Hàm mở modal hiển thị chi tiết tồn kho
+    function renderSkuPalletSummary(data) {
+        const tbody = document.querySelector('#skuPalletTable tbody');
+        const totalCartonEl = document.getElementById('leftTotalCarton');
+        const totalCbmEl = document.getElementById('leftTotalCbm');
+        if (!tbody || !totalCartonEl || !totalCbmEl) return;
+
+        tbody.innerHTML = '';
+        if (!data || data.length === 0) {
+            totalCartonEl.innerText = '0';
+            totalCbmEl.innerText = '0.000';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:8px;">Không có dữ liệu</td></tr>';
+            return;
+        }
+
+        const masterMap = new Map(masterData.map(m => [
+            (m.sku || '').trim(),
+            {
+                cbm: Number(m.cbm) || 0,
+                kindpallet: m.kindpallet || ''
+            }
+        ]));
+
+        const agg = new Map();
+        let totalCarton = 0;
+
+        data.forEach(item => {
+            const sku = (item.sku || 'N/A').trim();
+            const fdc = (item.fdc || 'N/A').trim() || 'N/A';
+            const carton = Number(item.inventory_qty) || 0;
+            const orderQty = Number(item.release_qty) || 0;
+            const cbmQty = getQtyForCbm(orderQty, carton);
+            const skuMeta = masterMap.get(sku) || { cbm: 0, kindpallet: '' };
+            const cbmPerCarton = skuMeta.cbm || 0;
+            const key = `${fdc}|${sku}`;
+
+            if (!agg.has(key)) {
+                agg.set(key, {
+                    fdc,
+                    sku,
+                    carton: 0,
+                    cbm: 0,
+                    kindpallet: skuMeta.kindpallet || ''
+                });
+            }
+
+            const curr = agg.get(key);
+            curr.carton += carton;
+            curr.cbm += (cbmQty * cbmPerCarton);
+            curr.kindpallet = curr.kindpallet || skuMeta.kindpallet || '';
+            totalCarton += carton;
+        });
+
+        const rows = Array.from(agg.values()).map((v) => {
+            const cbm = Number(v.cbm) || 0;
+            const palletInfo = getPalletInfoByKind(v.kindpallet, cbm);
+            return {
+                fdc: v.fdc,
+                sku: v.sku,
+                carton: v.carton,
+                cbm,
+                palletType: palletInfo.label,
+                palletCount: palletInfo.palletCount,
+                leftover: palletInfo.leftover,
+                isOversize: palletInfo.isOversize
+            };
+        }).sort((a, b) => {
+            const fdcCmp = (a.fdc || '').localeCompare(b.fdc || '');
+            if (fdcCmp !== 0) return fdcCmp;
+            return b.cbm - a.cbm;
+        });
+
+        const totalCbm = rows.reduce((s, r) => s + r.cbm, 0);
+
+        rows.forEach(r => {
+            const tr = document.createElement('tr');
+            const remainderText = r.leftover > 0 && !r.isOversize ? ` <span style="color:#d63384; font-size:11px;">(dư ${r.leftover.toFixed(3)} cbm)</span>` : '';
+            tr.innerHTML = `
+                <td>${r.fdc}</td>
+                <td>${r.sku}</td>
+                <td style="text-align:right;">${r.carton.toLocaleString()}</td>
+                <td style="text-align:center;">${r.palletType}${remainderText}</td>
+                <td style="text-align:right;">${r.palletCount.toLocaleString()}</td>
+                <td style="text-align:right; color:#0d6efd; font-weight:bold;">${r.cbm.toFixed(3)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const totalRow = document.createElement('tr');
+        totalRow.style.background = '#f3f4f6';
+        totalRow.innerHTML = `
+            <td><strong>TOTAL</strong></td>
+            <td><strong>ALL</strong></td>
+            <td style="text-align:right;"><strong>${totalCarton.toLocaleString()}</strong></td>
+            <td style="text-align:center;">-</td>
+            <td style="text-align:right;"><strong>${rows.reduce((s, r) => s + r.palletCount, 0).toLocaleString()}</strong></td>
+            <td style="text-align:right; color:#dc3545;"><strong>${totalCbm.toFixed(3)}</strong></td>
+        `;
+        tbody.appendChild(totalRow);
+
+        totalCartonEl.innerText = totalCarton.toLocaleString();
+        totalCbmEl.innerText = totalCbm.toFixed(3);
+    }
+
+    // Hàm m�Y modal hi�fn th�< chi tiết t�"n kho
     function openModal(item) {
         const sku = item.sku;
         const modal = document.getElementById('invModal');
@@ -296,14 +585,14 @@
         title.innerText = `Chi tiết SKU: ${sku}`;
         
         // --- Phần BBR Report Info ---
-        const parentPo = item.parent_po || ''; // Vẫn giữ để hiển thị
+        const parentPo = item.parent_po || ''; // Vẫn giữ �'�f hi�fn th�<
         const childPo = item.child_po || '';
         const releaseQty = Number(item.release_qty) || 0;
         
         // Lấy thông tin từ BBR
         let bbrQty = 0;
         if (childPo) {
-            // Lọc bbrData tìm các dòng khớp child_po và sku
+            // Lọc bbrData tìm các dòng kh�>p child_po và sku
             const bbrMatches = bbrData.filter(b => b.child_po == childPo && b.sku == sku);
             bbrQty = bbrMatches.reduce((acc, curr) => acc + (Number(curr.qty_bbr) || 0), 0);
         }
@@ -323,28 +612,49 @@
             </div>
         `;
         
-        // Lọc dữ liệu inventory theo SKU
+        // Lọc dữ li�?u inventory theo SKU
         const items = inventoryData.filter(i => i.sku_inventory === sku);
-        // Tính tổng tồn
-        const total = items.reduce((sum, i) => sum + (Number(i.qty_invetory) || 0), 0);
+        // Tính t�.ng t�"n
+        const total = items.reduce((sum, i) => sum + (Number(i.qty_inventory) || 0), 0);
+        const totalAx = items.reduce((sum, i) => sum + (Number(i.allocated_ctn || i.AX) || 0), 0);
         
         html += `<div style="margin-bottom:15px; font-size:16px;">Tổng tồn kho hiện tại: <strong style="color:#28a745; font-size:1.2em;">${total}</strong></div>`;
+        html += `<div style="margin-bottom:15px; font-size:16px;">Tổng AX: <strong style="color:#6610f2; font-size:1.2em;">${totalAx}</strong></div>`;
         
         if (items.length === 0) {
             html += '<p>Không có dữ liệu tồn kho cho SKU này.</p>';
         } else {
             html += '<table style="width:100%; border-collapse: collapse;">';
-            html += '<thead style="background:#f8f9fa;"><tr><th style="padding:8px; border-bottom:1px solid #ddd;">Parent PO</th><th style="padding:8px; border-bottom:1px solid #ddd;">Ngày nhận (Date Rcv)</th><th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">Số lượng</th></tr></thead>';
+            html += '<thead style="background:#f8f9fa;"><tr><th style="padding:8px; border-bottom:1px solid #ddd;">Parent PO</th><th style="padding:8px; border-bottom:1px solid #ddd;">Ngày nhận (Date Rcv)</th><th style="padding:8px; border-bottom:1px solid #ddd; text-align:center;">Due Date (Days)</th><th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">Số lượng</th><th style="padding:8px; border-bottom:1px solid #ddd; text-align:right;">AX</th></tr></thead>';
             html += '<tbody>';
             
             // Sắp xếp theo ngày nhập (FIFO)
             items.sort((a, b) => new Date(a.date_rcv || 0) - new Date(b.date_rcv || 0));
             
             items.forEach(i => {
+                let due_date_display = '-';
+                let due_date_class = '';
+                
+                if (i.qty_inventory > 0 && i.date_rcv) {
+                    const today = new Date();
+                    const rcvDate = new Date(i.date_rcv);
+                    const diffTime = today - rcvDate;
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    due_date_display = isNaN(diffDays) ? '-' : diffDays;
+                    
+                    if (!isNaN(diffDays)) {
+                        if (diffDays > 14) due_date_class = 'background-color: #fee2e2; color: #b91c1c; padding: 2px 6px; border-radius: 4px; font-weight: bold; display: inline-block; min-width: 20px; text-align: center;';
+                        else if (diffDays >= 10) due_date_class = 'background-color: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px; font-weight: bold; display: inline-block; min-width: 20px; text-align: center;';
+                        else due_date_class = 'background-color: #e0f2fe; color: #0ea5e9; padding: 2px 6px; border-radius: 4px; font-weight: bold; display: inline-block; min-width: 20px; text-align: center;';
+                    }
+                }
+
                 html += `<tr>
                     <td style="padding:8px; border-bottom:1px solid #eee;">${i.parent_po_invent || ''}</td>
                     <td style="padding:8px; border-bottom:1px solid #eee;">${formatDate(i.date_rcv)}</td>
-                    <td style="padding:8px; border-bottom:1px solid #eee; text-align:right; font-weight:bold;">${i.qty_invetory || 0}</td>
+                    <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;"><span style="${due_date_class}">${due_date_display}</span></td>
+                    <td style="padding:8px; border-bottom:1px solid #eee; text-align:right; font-weight:bold;">${i.qty_inventory || 0}</td>
+                    <td style="padding:8px; border-bottom:1px solid #eee; text-align:right; font-weight:bold; color:#6610f2;">${i.allocated_ctn || i.AX || 0}</td>
                 </tr>`;
             });
             html += '</tbody></table>';
@@ -358,7 +668,7 @@
         document.getElementById('invModal').style.display = 'none';
     }
 
-    // Đóng modal khi click ra ngoài vùng nội dung
+    // Đóng modal khi click ra ngoài vùng n�Ti dung
     window.onclick = function(event) {
         const modal = document.getElementById('invModal');
         if (event.target == modal) {
@@ -366,7 +676,7 @@
         }
     }
 
-    // Hàm lọc dữ liệu
+    // Hàm lọc dữ li�?u
     function filterData() {
         const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
         const selectedHub = document.getElementById('hubFilter').value;
@@ -405,7 +715,7 @@
 
     function buildHubOptions() {
         const select = document.getElementById('hubFilter');
-        // Giữ lại option đầu tiên
+        // Giữ lại option �'ầu tiên
         while (select.options.length > 1) select.remove(1);
 
         const hubs = new Set();
@@ -425,10 +735,10 @@
         const dsoMap = new Map(dsoData.map(d => [d.release_key, d]));
         const bbrMap = new Map(bbrData.map(b => [`${b.child_po}|${b.sku}`, b]));
         const dcMap = new Map(dcData.map(dc => {
-            const keyNum = Number(dc.code_dc);
+            const keyNum = Number(dc.id);
             return Number.isNaN(keyNum) ? null : [keyNum, dc];
         }).filter(Boolean));
-        // Map Master Data để lấy CBM
+        // Map Master Data �'�f lấy CBM
         const masterMap = new Map(masterData.map(m => [m.sku, Number(m.cbm) || 0]));
 
         preparedData = allData.map(item => {
@@ -440,13 +750,14 @@
 
             const hubCodeNum = Number((childPo || '').toString().substring(0, 3));
             const dcInfo = dcMap.get(hubCodeNum) || {};
-            const fdc = dcInfo.fdc || dcInfo.fdc_name || '';
-            const hub_dc = dcInfo.hub_dc || dcInfo.hub || '';
+            const fdc = dcInfo.fdc || '';
+            const hub_dc = dcInfo.hubdc || '';
 
             const invItems = inventoryData.filter(i => i.parent_po_invent == parentPo && i.sku_inventory == item.sku);
-            const inventory_qty = invItems.reduce((sum, i) => sum + (Number(i.qty_invetory) || 0), 0);
+            const inventory_qty = invItems.reduce((sum, i) => sum + (Number(i.qty_inventory) || 0), 0);
+            const ax_qty = invItems.reduce((sum, i) => sum + (Number(i.allocated_ctn || i.AX) || 0), 0);
             
-            // Lấy danh sách ngày, sắp xếp giảm dần (mới nhất lên đầu) và lấy ngày đầu tiên
+            // Lấy danh sách ngày, sắp xếp giảm dần (m�>i nhất lên �'ầu) và lấy ngày �'ầu tiên
             const dates = invItems.map(i => i.date_rcv).filter(d => d);
             dates.sort((a, b) => new Date(b) - new Date(a));
             
@@ -454,26 +765,42 @@
             const date_rcv_str = date_rcv_raw ? formatDate(date_rcv_raw) : '';
             
             // Tính toán CBM theo yêu cầu:
-            // Nếu Order < Inventory -> CBM * Order
-            // Nếu Order > Inventory -> CBM * Inventory
-            // Tương đương: CBM * Min(Order, Inventory)
-            const releaseQty = Number(item.release_qty) || 0;
+            // Nếu order < inventory => cbm * order
+            // Nếu inventory < order => cbm * inventory
+            // Nếu bằng nhau => cbm * order
             const skuCbm = masterMap.get(item.sku) || 0;
-            const qtyForCbm = (releaseQty < inventory_qty) ? releaseQty : inventory_qty;
+            const qtyForCbm = getQtyForCbm(item.release_qty, inventory_qty);
             const total_cbm = (qtyForCbm * skuCbm).toFixed(3);
 
-            return { ...item, child_po: childPo, parent_po: parentPo, fdc, hub_dc, inventory_qty, date_rcv_str, date_rcv_raw, total_cbm };
+            let due_date_display = '-';
+            let due_date_class = '';
+            
+            if (inventory_qty > 0 && date_rcv_raw) {
+                const today = new Date();
+                const rcvDate = new Date(date_rcv_raw);
+                const diffTime = today - rcvDate;
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                due_date_display = isNaN(diffDays) ? '-' : diffDays;
+                
+                if (!isNaN(diffDays)) {
+                    if (diffDays > 14) due_date_class = 'background-color: #fee2e2; color: #b91c1c; padding: 4px 8px; border-radius: 4px; font-weight: bold; display: inline-block; min-width: 24px; text-align: center;';
+                    else if (diffDays >= 10) due_date_class = 'background-color: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 4px; font-weight: bold; display: inline-block; min-width: 24px; text-align: center;';
+                    else due_date_class = 'background-color: #e0f2fe; color: #0ea5e9; padding: 4px 8px; border-radius: 4px; font-weight: bold; display: inline-block; min-width: 24px; text-align: center;';
+                }
+            }
+
+            return { ...item, child_po: childPo, parent_po: parentPo, fdc, hub_dc, inventory_qty, ax_qty, date_rcv_str, date_rcv_raw, total_cbm, due_date_display, due_date_class };
         });
 
-        // Sắp xếp theo yêu cầu: Ngày Release tăng dần, sau đó Số Carton giảm dần
+        // Sắp xếp theo yêu cầu: Ngày Release t�fng dần, sau �'ó S�' Carton giảm dần
         preparedData.sort((a, b) => {
             const dateA = new Date(a.release_date || 0);
             const dateB = new Date(b.release_date || 0);
 
             if (dateA.getTime() !== dateB.getTime()) {
-                return dateA - dateB; // Ngày Release tăng dần
+                return dateA - dateB; // Ngày Release t�fng dần
             }
-            return (Number(b.release_qty) || 0) - (Number(a.release_qty) || 0); // Số Carton giảm dần
+            return (Number(b.release_qty) || 0) - (Number(a.release_qty) || 0); // S�' Carton giảm dần
         });
 
         buildHubOptions();
@@ -483,11 +810,18 @@
     async function exportPicking() {
         const selectedItems = currentViewData.filter(item => selectedIds.has(item.id));
         if (selectedItems.length === 0) {
-            alert('Vui lòng chọn ít nhất 1 dòng để export.');
+            await showToast('warning', 'Thiếu dữ liệu', 'Vui lòng chọn ít nhất 1 dòng để export.');
             return;
         }
 
-        if (!confirm(`Bạn có chắc muốn export ${selectedItems.length} dòng sang Picking List?\n(Ngày Picking = Hôm nay, is_select = 0)`)) return;
+        const askExport = await confirmBox({
+            title: 'Xác nhận export Picking',
+            text: `Bạn có chắc muốn export ${selectedItems.length} dòng sang Picking List?`,
+            icon: 'warning',
+            confirmButtonText: 'Export',
+            cancelButtonText: 'Hủy'
+        });
+        if (!askExport.isConfirmed) return;
 
         const masterMap = new Map(masterData.map(m => [m.sku, m]));
 
@@ -495,20 +829,18 @@
             const mData = masterMap.get(item.sku) || {};
             const skuCbm = Number(mData.cbm) || 0;
             
-            // Quy tắc số lượng: Min(Order, Inventory)
             const releaseQty = Number(item.release_qty) || 0;
             const invQty = item.inventory_qty || 0;
-            // Server sẽ tính lại logic Min này nếu ta gửi cả 2, nhưng ta gửi số đã tính sẵn cho chắc chắn
-            const exportQty = (releaseQty < invQty) ? releaseQty : invQty;
+            const exportQty = getPickQty(releaseQty, invQty);
             
             return {
                 release_key: item.release_key,
                 sku: item.sku,
                 sku_name: mData.description,
-                // Gửi số lượng cần lấy thực tế (đã so sánh với tồn kho)
+                // Gửi s�' lượng cần lấy thực tế (�'ã so sánh v�>i t�"n kho)
                 release_qty: exportQty,
-                qty_invetory: invQty,
-                date_rcv: item.date_rcv_raw, // Gửi ngày gốc để server tính Due Date
+                qty_inventory: invQty,
+                date_rcv: item.date_rcv_raw, // Gửi ngày g�'c �'�f server tính Due Date
                 parent_po: item.parent_po,
                 child_po: item.child_po,
                 hubdc: item.hub_dc,
@@ -530,22 +862,23 @@
             });
             const json = await res.json();
             if (res.ok) {
-                alert(`✅ Export thành công!\nPicking No: ${json.picking_no}\nSố dòng: ${json.inserted}`);
+                await showToast('success', 'Export thành công', `Picking No: ${json.picking_no}\nSố dòng: ${json.inserted}`);
             } else {
-                alert('Lỗi export: ' + (json.error || json.message));
+                await showToast('error', 'Lỗi export', json.error || json.message || 'Không xác định');
             }
         } catch (err) {
             console.error(err);
-            alert('Lỗi kết nối server');
+            await showToast('error', 'Lỗi kết nối server');
         }
     }
 
-    // Gọi API lấy dữ liệu khi trang tải xong
+    // Gọi API lấy dữ li�?u khi trang tải xong
+    showPageLoading('Đang tải dữ liệu Release, Inventory, BBR, DC và Master Data...');
     Promise.all([
         fetch('/api/releasing').then(res => res.json()),
         fetch('/api/inventory').then(res => res.json()),
         fetch('/api/dso').then(res => res.json()),
-        fetch('/api/bbr').then(res => res.json()),
+        fetch('/api/bbrreport').then(res => res.json()),
         fetch('/api/dc').then(res => res.json()),
         fetch('/api/masterdata').then(res => res.json())
     ])
@@ -558,8 +891,14 @@
             masterData = Array.isArray(master) ? master : [];
             prepareAndRenderData();
         })
-    .catch(err => console.error('Lỗi tải dữ liệu:', err));
+    .catch(err => {
+            console.error('Lỗi tải dữ liệu:', err);
+            showToast('error', 'Không thể tải dữ liệu', err.message || 'Lỗi không xác định');
+        })
+    .finally(() => hidePageLoading());
 </script>
 
 </body>
 </html>
+
+

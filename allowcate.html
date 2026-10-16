@@ -78,13 +78,15 @@
                 <th>FDC </th>
                 <th>Hub DC</th>
                 <th>Tồn kho (Carton)</th>
+                <th>AX</th>
                 <th>Tổng Tồn SKU</th>
                 <th>Ngày Nhập (Date Rcv)</th>
+                <th>Due Date (Days)</th>
                 <th>Chọn</th>
             </tr>
         </thead>
         <tbody>
-            <tr><td colspan="14" style="text-align:center">Đang tải...</td></tr>
+            <tr><td colspan="16" style="text-align:center">Đang tải...</td></tr>
         </tbody>
     </table>
 </div>
@@ -105,6 +107,25 @@
         if (!dateString) return '';
         const date = new Date(dateString);
         return date.toLocaleDateString('vi-VN');
+    }
+
+    function getDueDateDays(item) {
+        if (item && item.due_date_days !== undefined && item.due_date_days !== null && item.due_date_days !== '') {
+            const apiDays = Number(item.due_date_days);
+            return Number.isFinite(apiDays) ? apiDays : null;
+        }
+        if (!item || !item.date_rcv) return null;
+        const rcvDate = new Date(item.date_rcv);
+        if (isNaN(rcvDate)) return null;
+        return Math.floor((new Date() - rcvDate) / (1000 * 60 * 60 * 24));
+    }
+
+    function formatDueDateBadge(days) {
+        if (days === null || days === undefined || Number.isNaN(Number(days))) return '-';
+        let style = 'background:#e0f2fe; color:#0ea5e9;';
+        if (days > 14) style = 'background:#fee2e2; color:#b91c1c;';
+        else if (days >= 10) style = 'background:#fef3c7; color:#92400e;';
+        return `<span style="${style} padding:4px 8px; border-radius:4px; font-weight:bold; display:inline-block; min-width:24px;">${days}</span>`;
     }
 
     async function loadData() {
@@ -177,9 +198,11 @@
                 })
                 .filter(Boolean)
         );
-        const header = ['Release Key','Ngày Release','SKU','CBM (đã nhân SL)','SL Cần Xuất','Child PO','Parent PO','FDC','Hub DC','Tồn kho','Còn lại','Ngày Nhập'];
+        const header = ['Release Key','Ngày Release','SKU','CBM (đã nhân SL)','SL Cần Xuất','Child PO','Parent PO','FDC','Hub DC','Tồn kho','AX','Còn lại','Ngày Nhập','Due Date (Days)'];
         const data = rows.map(item => {
-            const cbm = ((cbmMap.get(item.sku) || 0) * (Number(item.release_qty) || 0)).toFixed(3);
+            const cbmQty = item.calc_pick != null ? Number(item.calc_pick) || 0 : Number(item.release_qty) || 0;
+            const cbm = ((cbmMap.get(item.sku) || 0) * cbmQty).toFixed(3);
+            const dueDate = getDueDateDays(item);
             const hubCodeNum = Number((item.child_po || '').toString().substring(0,3));
             const dcInfo = dcMap.get(hubCodeNum);
             const hubName = dcInfo ? (dcInfo.hub_dc || dcInfo.hub || '') : '';
@@ -194,7 +217,10 @@
                 item.child_po ? (item.child_po.toString().substring(0,3)) : '',
                 hubName,
                 Number(item.qty_invetory) || 0,
-                item.date_rcv ? formatDate(item.date_rcv) : ''
+                Number(item.allocated_ctn || item.AX) || 0,
+                Number(item.calc_remaining) || 0,
+                item.date_rcv ? formatDate(item.date_rcv) : '',
+                dueDate === null ? '' : dueDate
             ];
         });
 
@@ -368,7 +394,7 @@
             (Array.isArray(state.master) ? state.master : []).map(item => [item.sku, parseFloat(item.cbm) || 0])
         );
         if (!state.allocate || state.allocate.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="14" style="text-align:center">Không có dữ liệu Allocate</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="16" style="text-align:center">Không có dữ liệu Allocate</td></tr>';
             return;
         }
 
@@ -458,7 +484,7 @@
         state.currentAllocView = data;
 
         if (data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="14" style="text-align:center">Không có dòng nào phù hợp bộ lọc</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="16" style="text-align:center">Không có dòng nào phù hợp bộ lọc</td></tr>';
             return;
         }
 
@@ -475,6 +501,7 @@
             const parentPo = item.parent_po || '<span class="missing-data">Thiếu BBR</span>';
             const releaseQtyNum = Number(item.release_qty) || 0;
             const invQtyNum = Number(item.qty_invetory) || 0;
+            const axQtyNum = Number(item.allocated_ctn || item.AX) || 0;
             const totalSkuInv = totalInvMap.get(item.sku) || 0;
             const invQty = item.qty_invetory != null ? `<span class="has-stock">${invQtyNum}</span>` : '<span class="missing-data">0</span>';
             const dateRcv = item.date_rcv ? formatDate(item.date_rcv) : '';
@@ -483,6 +510,8 @@
             const pickQty = Number(item.calc_pick) || 0;
             const totalCbm = (cbmPerCarton * pickQty).toFixed(3);
             const contEst = (Number(totalCbm) / 65).toFixed(2); // Dự kiến 65 CBM / container 40HC
+            const dueDateDays = getDueDateDays(item);
+            const dueDateHtml = formatDueDateBadge(dueDateDays);
 
             // Hiển thị số lượng phân bổ
             // Nếu pick < release tổng -> Có thể dòng này chỉ lấy 1 phần, hoặc đã hết hàng
@@ -516,8 +545,10 @@
                 <td>${fdcName || fdcCode}</td>
                 <td>${hubName}</td>
                 <td>${invQty}</td>
+                <td style="font-weight:bold; color:#6610f2;">${axQtyNum}</td>
                 <td style="color:#198754; font-weight:bold;">${totalSkuInv}</td>
                 <td>${dateRcv}</td>
+                <td style="text-align:center;">${dueDateHtml}</td>
                 <td style="text-align:center;">
                     <input type="checkbox" data-idx="${idx}" data-rowkey="${rowKey}" onclick="selectRow(event, ${idx})" ${state.selectedKeys.has(rowKey) ? 'checked' : ''}>
                 </td>

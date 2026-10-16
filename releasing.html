@@ -57,6 +57,17 @@
         .btn-delete { background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; margin-left: 5px; }
         .btn-delete:hover { background-color: #c82333; }
         .btn-secondary { background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+
+        /* Hiệu ứng nhấp nháy cho nút Check */
+        @keyframes pulse-opacity {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .loading-check {
+            animation: pulse-opacity 0.8s infinite ease-in-out;
+            pointer-events: none; /* Khóa click liên tiếp */
+        }
     </style>
 </head>
 <body>
@@ -82,7 +93,7 @@
 
     <div class="search-container">
         <input type="text" id="skuSearch" class="search-input" placeholder="🔍 Tìm kiếm theo SKU..." oninput="applyFilters()">
-        <input type="text" id="releaseKeySearch" class="search-input" placeholder="🔑 Tìm theo Release Key..." style="margin-left:10px" oninput="applyFilters()">
+        <input type="text" id="releaseKeySearch" class="search-input" placeholder="🔑 Tìm Key hoặc Child PO..." style="margin-left:10px; width: 200px;" oninput="applyFilters()">
         <select id="checkedFilter" class="search-input" style="width: 150px; margin-left: 10px;" onchange="applyFilters()">
             <option value="">Tất cả (Check)</option>
             <option value="1">Đã Check</option>
@@ -106,16 +117,31 @@
                 <th>Key</th>
                 <th class="sortable" onclick="toggleSort()">Ngày Release <span id="sortIcon">▼</span></th>
                 <th>SKU</th>
+                <th>Child PO</th>
+                <th>Tồn kho</th>
+                <th>Inbound</th>
+                <th>SL Gốc</th>
                 <th>Số lượng</th>
+                <th>Tổng CBM (m³)</th>
                 <th>Checked</th>
                 <th>Trạng thái</th>
                 <th>Lý do</th>
+                <th>Ghi chú cập nhật</th>
                 <th>Hành động</th>
             </tr>
         </thead>
         <tbody>
             <!-- Dữ liệu sẽ được chèn vào đây bằng JavaScript -->
         </tbody>
+        <tfoot id="releasingTableFooter" style="background: #f8f9fa; font-weight: bold; display: none;">
+            <tr>
+                <td colspan="7" style="text-align: right; padding: 12px; color: #333;">TỔNG CỘNG (Theo bộ lọc):</td>
+                <td id="totalOrigQtySum" style="padding: 12px; color: #6c757d; font-size: 1.1em;">0</td>
+                <td id="totalQtySum" style="padding: 12px; color: #28a745; font-size: 1.1em;">0</td>
+                <td id="totalCbmSum" style="padding: 12px; color: #0d6efd; font-size: 1.1em;">0.000</td>
+                <td colspan="5"></td>
+            </tr>
+        </tfoot>
     </table>
 </div>
 
@@ -128,20 +154,40 @@
     }
 
     let allData = []; // Biến lưu trữ toàn bộ dữ liệu tải từ server
+    let dsoDataList = []; // Biến lưu dữ liệu DSO
+    let masterDataList = []; // Biến lưu dữ liệu Master Data
+    let bbrDataList = []; // Biến lưu dữ liệu BBR Report
+    let inventoryDataList = []; // Biến lưu dữ liệu Inventory
+    let inboundDataList = []; // Biến lưu dữ liệu Inbound
+    let cbmMap = new Map(); // Map nhanh SKU -> CBM
     let currentStatus = 1; // Mặc định là Open
     let sortDirection = 'desc'; // 'asc' (tăng dần) hoặc 'desc' (giảm dần)
 
     // Hàm render bảng dựa trên dữ liệu đã lọc
     function renderTable(data) {
         const tableBody = document.querySelector('#releasingTable tbody');
+        const tableFooter = document.getElementById('releasingTableFooter');
         tableBody.innerHTML = '';
 
+        let totalOrigQty = 0;
+        let totalQty = 0;
+        let totalCbmSum = 0;
+
         if (!data || data.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center">Chưa có dữ liệu cho trạng thái này</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="15" style="text-align:center">Chưa có dữ liệu cho trạng thái này</td></tr>';
+            if (tableFooter) tableFooter.style.display = 'none';
             return;
         }
 
         data.forEach(item => {
+            const qty = Number(item.release_qty) || 0;
+            const originalQty = Number(item.original_qty) || 0;
+            const cbmPerCarton = cbmMap.get(item.sku) || 0;
+            const totalCbm = qty * cbmPerCarton;
+            
+            totalOrigQty += originalQty;
+            totalQty += qty;
+            totalCbmSum += totalCbm;
             const row = document.createElement('tr');
 
             let statusBadge = '';
@@ -150,7 +196,32 @@
             else if (item.status === 7) statusBadge = '<span class="status-badge status-close">Close</span>';
             else statusBadge = `<span class="status-badge status-other">${item.status}</span>`;
 
-            const isCheckedIcon = (item.is_checked == 1) ? '✅' : '⬜';
+            const isCheckedIcon = `<span id="check-icon-${item.id}" style="cursor: pointer; user-select: none; font-size: 1.2em; display: inline-block; transition: all 0.2s;" onclick="toggleCheck('${item.id}', ${item.is_checked || 0})" title="Click để Check/Uncheck">${(item.is_checked == 1) ? '✅' : '⬜'}</span>`;
+            const isCheckedText = `<span id="notupdate-icon-${item.id}" style="cursor: pointer; user-select: none; font-size: 1.2em; display: inline-block; transition: all 0.2s;" onclick="toggleNotUpdate('${item.id}', ${item.not_update || 0})" title="Click để đổi trạng thái Ghi chú">${(item.not_update == 1) ? '✅' : '⬜'}</span>`;
+
+            // Tìm DSO liên kết
+            const linkedDso = dsoDataList.filter(d => d.release_key === item.release_key);
+            const childPoText = linkedDso.length > 0 
+                ? linkedDso.map(d => d.child_po).filter(Boolean).join(', ')
+                : '<span style="color:#999; font-style:italic;">N/A</span>';
+
+            // Mapping Inventory & Inbound
+            let invYn = 'N';
+            let inbYn = 'N';
+            linkedDso.forEach(dso => {
+                const bbrMatch = bbrDataList.find(b => b.child_po === dso.child_po && b.sku === item.sku);
+                if (bbrMatch && bbrMatch.parent_po) {
+                    const parentPo = bbrMatch.parent_po;
+                    if (inventoryDataList.some(inv => inv.parent_po_invent === parentPo && inv.sku_inventory === item.sku)) {
+                        invYn = 'Y';
+                    }
+                    if (inboundDataList.some(inb => (inb.parent_po || inb.parentpo) === parentPo && inb.sku === item.sku)) {
+                        inbYn = 'Y';
+                    }
+                }
+            });
+            const invHtml = invYn === 'Y' ? '<span style="color: #28a745; font-weight: bold;">Y</span>' : '<span style="color: #dc3545; font-weight: bold;">N</span>';
+            const inbHtml = inbYn === 'Y' ? '<span style="color: #28a745; font-weight: bold;">Y</span>' : '<span style="color: #dc3545; font-weight: bold;">N</span>';
 
             // Chỉ hiển thị nút xóa nếu is_checked = 0
             const deleteButtonHtml = (item.is_checked == 0)
@@ -162,17 +233,33 @@
                 <td>${item.release_key || ''}</td>
                 <td>${formatDate(item.release_date)}</td>
                 <td><strong>${item.sku || ''}</strong></td>
-                <td>${item.release_qty || 0}</td>
+                <td><a href="javascript:void(0)" onclick="viewDsoDetails('${item.release_key}', '${item.sku}')" style="color: #007bff; text-decoration: underline; font-weight: bold;">${childPoText}</a></td>
+                <td style="text-align:center;">${invHtml}</td>
+                <td style="text-align:center;">${inbHtml}</td>
+                <td>${originalQty}</td>
+                <td>${qty}</td>
+                <td style="font-weight:bold; color: #0d6efd;">${totalCbm.toFixed(3)}</td>
                 <td style="text-align:center;">${isCheckedIcon}</td>
                 <td>${statusBadge}</td>
                 <td>${item.change_reason || ''}</td>
+                <td style="text-align:center;">${isCheckedText}</td>
                 <td>
-                    <button class="btn-edit" onclick="openEditModal('${item.id}', '${item.status}')">✏️ Sửa</button>
+                    <button class="btn-edit" onclick="openEditModal('${item.id}', '${item.status}', '${item.not_update || 0}')">✏️ Sửa</button>
                     ${deleteButtonHtml}
                 </td>
             `;
             tableBody.appendChild(row);
         });
+
+        if (tableFooter) {
+            const elOrig = document.getElementById('totalOrigQtySum');
+            if (elOrig) elOrig.innerText = totalOrigQty.toLocaleString();
+            const elQty = document.getElementById('totalQtySum');
+            if (elQty) elQty.innerText = totalQty.toLocaleString();
+            const elCbm = document.getElementById('totalCbmSum');
+            if (elCbm) elCbm.innerText = totalCbmSum.toFixed(3);
+            tableFooter.style.display = 'table-footer-group';
+        }
     }
 
     // Hàm lọc tổng hợp (Logic cốt lõi: Kết hợp cả Status và Search Key)
@@ -184,7 +271,11 @@
         const filteredData = allData.filter(item => {
             const matchStatus = item.status === currentStatus;
             const matchSku = (item.sku || '').toLowerCase().includes(searchSku);
-            const matchKey = (item.release_key || '').toLowerCase().includes(searchReleaseKey);
+            
+            const linkedDso = dsoDataList.filter(d => d.release_key === item.release_key);
+            const childPoText = linkedDso.map(d => d.child_po).filter(Boolean).join(', ').toLowerCase();
+            const matchKey = (item.release_key || '').toLowerCase().includes(searchReleaseKey) || childPoText.includes(searchReleaseKey);
+
             // So sánh check (nếu checkedFilter rỗng thì lấy hết, ngược lại so sánh giá trị)
             const matchChecked = checkedFilter === '' || String(item.is_checked || 0) == checkedFilter;
             return matchStatus && matchSku && matchKey && matchChecked;
@@ -222,20 +313,97 @@
     }
 
     // Hàm gọi API để lấy dữ liệu
-    fetch('/api/releasing')
-        .then(response => response.json())
-        .then(data => {
-            allData = data; // Lưu dữ liệu vào biến toàn cục
-            // Mặc định hiển thị Tab Open (status = 1) khi mới vào trang
-            const activeBtn = document.querySelector('.tab-btn.active');
-            filterTab(1, activeBtn);
-        })
-        .catch(error => {
-            console.error('Lỗi:', error);
-            alert('Không thể tải dữ liệu từ server.');
-        });
+    Promise.all([
+        fetch('/api/releasing').then(res => res.json()),
+        fetch('/api/dso').then(res => res.json()),
+        fetch('/api/masterdata').then(res => res.json()),
+        fetch('/api/bbr').then(res => res.json()),
+        fetch('/api/inventory').then(res => res.json()),
+        fetch('/api/inbound').then(res => res.ok ? res.json() : []).catch(() => [])
+    ])
+    .then(([releasingData, dsoData, masterData, bbrData, inventoryData, inboundData]) => {
+        // Kiểm tra xem server có trả về lỗi (HTTP 500) dạng JSON không
+        if (releasingData.error) throw new Error('API Releasing: ' + (releasingData.details || releasingData.error));
+        if (dsoData.error) throw new Error('API DSO: ' + (dsoData.details || dsoData.error));
+        if (masterData.error) throw new Error('API Master Data: ' + (masterData.details || masterData.error));
+        if (bbrData.error) throw new Error('API BBR: ' + (bbrData.details || bbrData.error));
+        if (inventoryData.error) throw new Error('API Inventory: ' + (inventoryData.details || inventoryData.error));
+
+        allData = Array.isArray(releasingData) ? releasingData : [];
+        dsoDataList = Array.isArray(dsoData) ? dsoData : [];
+        masterDataList = Array.isArray(masterData) ? masterData : [];
+        bbrDataList = Array.isArray(bbrData) ? bbrData : [];
+        inventoryDataList = Array.isArray(inventoryData) ? inventoryData : [];
+        inboundDataList = Array.isArray(inboundData) ? inboundData : [];
+
+        cbmMap = new Map(masterDataList.map(m => [m.sku, Number(m.cbm) || 0]));
+        const activeBtn = document.querySelector('.tab-btn.active');
+        filterTab(1, activeBtn);
+    })
+    .catch(error => {
+        console.error('Lỗi:', error);
+        alert('Lỗi tải dữ liệu:\n' + error.message);
+    });
 
     // --- HÀM XỬ LÝ IMPORT EXCEL ---
+    function normalizeReleaseRow(row) {
+        const rawQty = parseInt(row['release_qty'] || row['Release Qty'] || row['QTY']) || 0;
+        const udf4 = parseInt(row['udf4'] || row['UDF 4'] || row['UDF4'] || row['ufd4'] || row['UFD 4'] || row['UFD4']) || 0;
+        const releaseQty = rawQty - udf4;
+        let status = parseInt(row['status'] || row['Status']) || 1;
+        if (releaseQty <= 0) status = 3;
+        
+        return {
+            release_key: row['release_key'] || row['Release Key'] || row['RELEASE KEY'],
+            release_date: row['release_date'] || row['Release Date'],
+            sku: row['sku'] || row['SKU'],
+            original_qty: rawQty,
+            release_qty: releaseQty,
+            status: status,
+            not_update: row['not_update'] || row['Not Update'] || ''
+        };
+    }
+
+    function formatImportErrors(sampleErrors) {
+        if (!Array.isArray(sampleErrors) || sampleErrors.length === 0) return '';
+        return sampleErrors
+            .slice(0, 10)
+            .map(item => `Dong ${item.row}: ${item.reason}${item.release_key ? ` | Key: ${item.release_key}` : ''}${item.sku ? ` | SKU: ${item.sku}` : ''}`)
+            .join('\n');
+    }
+
+    function getWorksheetRowCount(worksheet) {
+        const ref = worksheet['!ref'];
+        if (!ref) return 0;
+        return XLSX.utils.decode_range(ref).e.r + 1;
+    }
+
+    function extractChunkRows(worksheet, headers, startRowIndex, chunkSize) {
+        const rows = XLSX.utils.sheet_to_json(worksheet, {
+            raw: false,
+            dateNF: 'yyyy-mm-dd',
+            range: startRowIndex,
+            header: 1,
+            blankrows: false
+        });
+
+        return rows
+            .slice(0, chunkSize)
+            .map((values, offset) => {
+                const row = {};
+                headers.forEach((header, index) => {
+                    row[header] = values[index];
+                });
+                return {
+                    ...normalizeReleaseRow(row),
+                    __rowNum: startRowIndex + offset + 1
+                };
+            })
+            .filter(item => item.release_key || item.sku || item.release_qty);
+    }
+
+    const delay = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+
     function importExcel() {
         const fileInput = document.getElementById('excelFile');
         const file = fileInput.files[0];
@@ -245,60 +413,79 @@
             return;
         }
 
-        const reader = new FileReader();
+        if (!confirm(`Bạn có chắc muốn đọc và import file Excel này không?`)) return;
 
-        reader.onload = function(e) {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-
-            // Lấy sheet đầu tiên
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-
-            // Chuyển đổi sheet thành JSON
-            // raw: false giúp định dạng ngày tháng thành chuỗi thay vì số serial
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
-
-            if (jsonData.length === 0) {
-                alert('File Excel không có dữ liệu!');
-                return;
-            }
-
-            console.log('Dữ liệu đọc từ Excel:', jsonData);
-            
-            // Map dữ liệu để đảm bảo đúng tên cột (nếu cần chuẩn hóa)
-            // Giả sử Excel có header: release_key, release_date, sku, release_qty, status
-            const standardizedData = jsonData.map(row => ({
-                release_key: row['release_key'],
-                release_date: row['release_date'], // Cần đảm bảo định dạng YYYY-MM-DD
-                sku: row['sku'],
-                release_qty: parseInt(row['release_qty']) || 0,
-                status: parseInt(row['status']) || 1
-            }));
-
-            // Gửi dữ liệu lên Server
-            uploadData(standardizedData);
-        };
-
-        reader.readAsArrayBuffer(file);
-    }
-
-    // --- IMPORT VỚI PROGRESS BAR ---
-    async function uploadData(data) {
-        if (!confirm(`Bạn có chắc muốn import ${data.length} dòng dữ liệu?`)) return;
-
-        // Hiển thị Modal
+        // Hiện Modal báo đang đọc file (giúp UI không cảm giác bị treo)
         const modal = document.getElementById('progressModal');
         const pBar = document.getElementById('progressBar');
         const pText = document.getElementById('progressText');
         const resultBox = document.getElementById('resultBox');
         
         modal.style.display = 'flex';
-        resultBox.style.display = 'none'; // Ẩn kết quả cũ
-        pBar.style.width = '0%';
-        pText.innerText = 'Đang chuẩn bị...';
+        resultBox.style.display = 'none';
+        pBar.style.width = '5%';
+        pText.innerText = 'Đang đọc dữ liệu từ file Excel (có thể mất vài giây)...';
 
-        const BATCH_SIZE = 50; // Số lượng dòng gửi mỗi lần (để thanh tiến trình chạy mượt)
+        // Đẩy task xuống event loop kế tiếp để Modal kịp hiện lên trước khi file lớn khóa Main Thread
+        setTimeout(() => {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    pBar.style.width = '15%';
+                    pText.innerText = 'Đang trích xuất dữ liệu...';
+
+                    setTimeout(() => {
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
+                        if (jsonData.length === 0) {
+                            alert('File Excel không có dữ liệu!');
+                            modal.style.display = 'none';
+                            return;
+                        }
+            
+                        const standardizedData = jsonData.map(row => {
+                            const rawQty = parseInt(row['release_qty'] || row['Release Qty'] || row['QTY']) || 0;
+                            const udf4 = parseInt(row['udf4'] || row['UDF 4'] || row['UDF4']) || 0;
+                            const releaseQty = rawQty - udf4;
+                            let status = parseInt(row['status'] || row['Status']) || 1;
+                            if (releaseQty === 0) status = 3;
+                            
+                            return {
+                                release_key: row['release_key'] || row['Release Key'] || row['RELEASE KEY'],
+                                release_date: row['release_date'] || row['Release Date'], 
+                                sku: row['sku'] || row['SKU'],
+                                original_qty: rawQty,
+                                release_qty: releaseQty,
+                                status: status,
+                                not_update: row['not_update'] || row['Not Update'] || ''
+                            };
+                        });
+
+                        uploadData(standardizedData);
+                    }, 50);
+                } catch (err) {
+                    alert('Lỗi xử lý file Excel: ' + err.message);
+                    modal.style.display = 'none';
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
+        }, 100);
+    }
+
+    // --- IMPORT VỚI PROGRESS BAR ---
+    async function uploadData(data) {
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('progressText');
+        const resultBox = document.getElementById('resultBox');
+        
+        // Tăng Batch Size lên 1000 cho các file lớn (>30k dòng) để giảm request lên server
+        const BATCH_SIZE = 1000;
         let total = data.length;
         let processed = 0;
         let stats = { inserted: 0, updated: 0, errors: 0 };
@@ -325,9 +512,9 @@
 
                 // Cập nhật Progress Bar
                 processed += batch.length;
-                const percent = Math.min(100, Math.round((processed / total) * 100));
+                const percent = 20 + Math.min(80, Math.round((processed / total) * 80));
                 pBar.style.width = percent + '%';
-                pText.innerText = `Đang xử lý: ${percent}% (${processed}/${total})`;
+                pText.innerText = `Đang tải lên server: ${percent}% (${processed}/${total})`;
             }
 
             // Hoàn tất - Hiển thị kết quả
@@ -347,9 +534,10 @@
     }
 
     // --- HÀM XỬ LÝ SỬA STATUS ---
-    function openEditModal(id, status) {
+    function openEditModal(id, status, not_update) {
         document.getElementById('editId').value = id;
         document.getElementById('editStatus').value = status;
+        document.getElementById('editNotUpdate').value = not_update;
         document.getElementById('editModal').style.display = 'flex';
     }
 
@@ -357,14 +545,92 @@
         document.getElementById('editModal').style.display = 'none';
     }
 
+    function toggleCheck(id, currentStatus) {
+        const newStatus = currentStatus == 1 ? 0 : 1;
+        
+        // Hiển thị trạng thái loading / nhấp nháy
+        const iconEl = document.getElementById(`check-icon-${id}`);
+        if (iconEl) {
+            iconEl.classList.add('loading-check'); // Thêm hiệu ứng nhấp nháy
+            iconEl.innerText = '⏳'; // Đổi sang đồng hồ cát
+        }
+
+        fetch('/api/releasing/toggle_check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id, is_checked: newStatus })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                alert('Lỗi: ' + data.error);
+                // Khôi phục lại nếu lỗi
+                if (iconEl) {
+                    iconEl.classList.remove('loading-check');
+                    iconEl.innerText = currentStatus == 1 ? '✅' : '⬜';
+                }
+            } else {
+                const item = allData.find(d => d.id == id);
+                if (item) item.is_checked = newStatus;
+                applyFilters(); // Vẽ lại bảng ngay lập tức
+            }
+        })
+        .catch(err => {
+            alert('Lỗi kết nối: ' + err);
+            // Khôi phục lại nếu lỗi
+            if (iconEl) {
+                iconEl.classList.remove('loading-check');
+                iconEl.innerText = currentStatus == 1 ? '✅' : '⬜';
+            }
+        });
+    }
+
+    function toggleNotUpdate(id, currentStatus) {
+        const newStatus = currentStatus == 1 ? 0 : 1;
+        
+        const iconEl = document.getElementById(`notupdate-icon-${id}`);
+        if (iconEl) {
+            iconEl.classList.add('loading-check');
+            iconEl.innerText = '⏳';
+        }
+
+        fetch('/api/releasing/toggle_not_update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id, not_update: newStatus })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                alert('Lỗi: ' + data.error);
+                if (iconEl) {
+                    iconEl.classList.remove('loading-check');
+                    iconEl.innerText = currentStatus == 1 ? '✅' : '⬜';
+                }
+            } else {
+                const item = allData.find(d => d.id == id);
+                if (item) item.not_update = newStatus;
+                applyFilters();
+            }
+        })
+        .catch(err => {
+            alert('Lỗi kết nối: ' + err);
+            if (iconEl) {
+                iconEl.classList.remove('loading-check');
+                iconEl.innerText = currentStatus == 1 ? '✅' : '⬜';
+            }
+        });
+    }
+
     function saveStatus() {
         const id = document.getElementById('editId').value;
         const status = document.getElementById('editStatus').value;
+        const not_update = document.getElementById('editNotUpdate').value;
         
         fetch('/api/releasing/update', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ id, status })
+            body: JSON.stringify({ id, status, not_update: parseInt(not_update) })
         })
         .then(res => res.json())
         .then(data => {
@@ -372,7 +638,10 @@
             else {
                 // Cập nhật dữ liệu local và vẽ lại bảng
                 const item = allData.find(d => d.id == id);
-                if (item) item.status = parseInt(status);
+                if (item) {
+                    item.status = parseInt(status);
+                    item.not_update = parseInt(not_update);
+                }
                 closeEditModal();
                 applyFilters(); 
             }
@@ -473,6 +742,181 @@
         })
         .catch(err => alert('Lỗi kết nối: ' + err));
     }
+
+    // --- HÀM XEM CHI TIẾT DSO ---
+    function viewDsoDetails(release_key, sku) {
+        document.getElementById('dsoModalKey').innerText = release_key;
+        const tbody = document.getElementById('dsoModalBody');
+        
+        const matches = dsoDataList.filter(d => d.release_key === release_key);
+        if (matches.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Không có DSO liên kết</td></tr>';
+        } else {
+            tbody.innerHTML = matches.map(m => {
+                let st = m.status_dso == 1 ? '<span class="status-badge status-new">Open</span>' :
+                         m.status_dso == 3 ? '<span class="status-badge status-allocate">Allocate</span>' :
+                         m.status_dso == 7 ? '<span class="status-badge status-close">Close</span>' : 
+                         `<span class="status-badge status-other">${m.status_dso || ''}</span>`;
+                
+                const bbrMatch = bbrDataList.find(b => b.child_po === m.child_po && b.sku === sku);
+                const parentPo = bbrMatch ? bbrMatch.parent_po : (m.parent_po || '');
+                
+                return `<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${m.child_po || ''}</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${parentPo || ''}</td><td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${st}</td></tr>`;
+            }).join('');
+        }
+        document.getElementById('dsoModal').style.display = 'flex';
+    }
+
+    function closeDsoModal() {
+        document.getElementById('dsoModal').style.display = 'none';
+    }
+
+    async function uploadWorksheetInChunks(worksheet) {
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('progressText');
+        const resultBox = document.getElementById('resultBox');
+        const modal = document.getElementById('progressModal');
+        const headerRows = XLSX.utils.sheet_to_json(worksheet, {
+            raw: false,
+            dateNF: 'yyyy-mm-dd',
+            header: 1,
+            range: 0,
+            blankrows: false
+        });
+        const headers = headerRows[0];
+
+        if (!Array.isArray(headers) || headers.length === 0) {
+            alert('File Excel khong co dong tieu de!');
+            modal.style.display = 'none';
+            return;
+        }
+
+        const parseChunkSize = 2500;
+        const total = Math.max(0, getWorksheetRowCount(worksheet) - 1);
+        let processed = 0;
+        let stats = { inserted: 0, updated: 0, errors: 0 };
+        let sampleErrors = [];
+
+        try {
+            if (total === 0) {
+                alert('File Excel khong co du lieu!');
+                modal.style.display = 'none';
+                return;
+            }
+
+            for (let rowIndex = 1; rowIndex <= total; rowIndex += parseChunkSize) {
+                const batch = extractChunkRows(worksheet, headers, rowIndex, parseChunkSize);
+                processed = Math.min(total, rowIndex - 1 + parseChunkSize);
+
+                if (batch.length === 0) {
+                    const emptyPercent = 20 + Math.min(80, Math.round((processed / total) * 80));
+                    pBar.style.width = `${emptyPercent}%`;
+                    pText.innerText = `Dang bo qua dong trong: ${processed}/${total}`;
+                    await delay(0);
+                    continue;
+                }
+
+                pText.innerText = `Dang tao batch tu Excel: ${Math.min(total, rowIndex - 1 + batch.length)}/${total}`;
+                const response = await fetch('/api/releasing/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(batch)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server tra ve ${response.status}`);
+                }
+
+                const result = await response.json();
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+
+                if (result.stats) {
+                    stats.inserted += Number(result.stats.inserted) || 0;
+                    stats.updated += Number(result.stats.updated) || 0;
+                    stats.errors += Number(result.stats.errors) || 0;
+                }
+
+                if (Array.isArray(result.sample_errors) && result.sample_errors.length > 0 && sampleErrors.length < 10) {
+                    sampleErrors = sampleErrors.concat(result.sample_errors).slice(0, 10);
+                }
+
+                const percent = 20 + Math.min(80, Math.round((processed / total) * 80));
+                pBar.style.width = `${percent}%`;
+                pText.innerText = `Dang tai len server: ${percent}% (${processed}/${total})`;
+                await delay(0);
+            }
+
+            pText.innerText = 'Import hoan tat!';
+            pBar.style.backgroundColor = '#28a745';
+            document.getElementById('countNew').innerText = stats.inserted;
+            document.getElementById('countUpdate').innerText = stats.updated;
+            document.getElementById('countError').innerText = stats.errors;
+            resultBox.style.display = 'block';
+
+            if (sampleErrors.length > 0) {
+                let message = [];
+                if (sampleErrors.length > 0) {
+                    message.push('Mau dong loi:');
+                    message.push(formatImportErrors(sampleErrors));
+                }
+                alert(message.join('\n'));
+            }
+        } catch (error) {
+            console.error('Loi import:', error);
+            pText.innerText = 'Co loi xay ra!';
+            pBar.style.backgroundColor = '#dc3545';
+        }
+    }
+
+    function importExcel() {
+        const fileInput = document.getElementById('excelFile');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert('Vui long chon file Excel!');
+            return;
+        }
+
+        if (!confirm('Ban co chac muon doc va import file Excel nay khong?')) return;
+
+        const modal = document.getElementById('progressModal');
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('progressText');
+        const resultBox = document.getElementById('resultBox');
+
+        modal.style.display = 'flex';
+        resultBox.style.display = 'none';
+        pBar.style.width = '5%';
+        pBar.style.backgroundColor = '#007bff';
+        pText.innerText = 'Dang doc du lieu tu file Excel...';
+
+        setTimeout(() => {
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+
+                    pBar.style.width = '15%';
+                    pText.innerText = 'Dang chuan bi chia batch tu Excel...';
+
+                    setTimeout(() => {
+                        uploadWorksheetInChunks(worksheet);
+                    }, 50);
+                } catch (err) {
+                    alert('Loi xu ly file Excel: ' + err.message);
+                    modal.style.display = 'none';
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
+        }, 100);
+    }
 </script>
 
 <!-- Modal Progress Bar -->
@@ -500,14 +944,21 @@
 <!-- Modal Edit Status -->
 <div id="editModal" class="modal-overlay">
     <div class="modal-content" style="width: 300px;">
-        <h3>Cập nhật trạng thái</h3>
+        <h3>Cập nhật thông tin</h3>
         <input type="hidden" id="editId">
-        <div style="margin: 20px 0;">
+        <div style="margin: 15px 0;">
             <label>Trạng thái mới:</label>
             <select id="editStatus" style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
                 <option value="1">Open</option>
                 <option value="3">Allocate</option>
                 <option value="7">Close</option>
+            </select>
+        </div>
+        <div style="margin: 15px 0;">
+            <label>Ghi chú cập nhật (Check):</label>
+            <select id="editNotUpdate" style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
+                <option value="0">⬜ Chưa Check</option>
+                <option value="1">✅ Đã Check</option>
             </select>
         </div>
         <div style="display: flex; gap: 10px; justify-content: center;">
@@ -525,6 +976,27 @@
         <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
             <button class="btn-secondary" style="margin-top:0" onclick="closeDeleteConfirmModal()">Hủy</button>
             <button class="btn-delete" style="padding: 8px 15px;" onclick="executeDelete()">Đồng ý Xóa</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal DSO Details -->
+<div id="dsoModal" class="modal-overlay" style="z-index: 1100;">
+    <div class="modal-content" style="width: 500px; border-top: 5px solid #007bff;">
+        <h3 style="margin-top:0; color: #007bff;">Chi tiết DSO</h3>
+        <p style="margin-bottom: 15px;">Release Key: <strong id="dsoModalKey"></strong></p>
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
+            <thead style="background: #f8f9fa;">
+                <tr>
+                    <th style="padding: 8px; border: 1px solid #ddd;">Child PO</th>
+                    <th style="padding: 8px; border: 1px solid #ddd;">Parent PO</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody id="dsoModalBody"></tbody>
+        </table>
+        <div style="text-align: right; margin-top: 20px;">
+            <button class="btn-secondary" onclick="closeDsoModal()">Đóng</button>
         </div>
     </div>
 </div>

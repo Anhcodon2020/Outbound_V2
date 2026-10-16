@@ -331,6 +331,7 @@
         let selectedBoxKey = null;
         let convertedAutoKeys = new Set(); // Các thùng auto đã chuyển sang manual (ẩn bản gốc)
         const PALLET_FOOT_HEIGHT = 170; // chiều cao chân pallet cần trừ
+        let ghostBox = null;
 
         function getUsablePalletHeight() {
             const pHGlobal = parseFloat(document.getElementById('pH').value) || 0;
@@ -385,6 +386,14 @@
             boxesGroup = new THREE.Group();
             scene.add(palletGroup);
             scene.add(boxesGroup);
+
+            // Khởi tạo Ghost Box (Bóng mờ dự đoán vị trí)
+            ghostBox = new THREE.Mesh(
+                new THREE.BoxGeometry(1, 1, 1),
+                new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.5, depthWrite: false })
+            );
+            ghostBox.visible = false;
+            scene.add(ghostBox);
 
             // Tải Master Data khi khởi tạo
             try {
@@ -682,6 +691,15 @@
                 dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), selectedObject.position);
                 if (raycaster.ray.intersectPlane(dragPlane, intersectionPoint)) {
                     dragOffset.copy(selectedObject.position).sub(intersectionPoint);
+                }
+
+                // Hiển thị Ghost Box bằng kích thước và góc xoay của hộp đang chọn
+                if (ghostBox) {
+                    ghostBox.geometry.dispose();
+                    ghostBox.geometry = selectedObject.children[0].geometry.clone();
+                    ghostBox.position.copy(selectedObject.position);
+                    ghostBox.rotation.copy(selectedObject.rotation);
+                    ghostBox.visible = true;
                 }
             } else {
                 clearSelection();
@@ -1019,8 +1037,15 @@
                 if (raycaster.ray.intersectPlane(dragPlane, intersectionPoint)) {
                     let newPos = intersectionPoint.add(dragOffset);
                     const { snappedX, snappedZ } = clampAndSnap(newPos.x, newPos.z);
-                    selectedObject.position.x = snappedX;
-                    selectedObject.position.z = snappedZ;
+                    
+                    // Di chuyển khối mượt mà theo trỏ chuột
+                    selectedObject.position.x = newPos.x;
+                    selectedObject.position.z = newPos.z;
+
+                    // Cập nhật vị trí bóng mờ (Ghost Box) đã được Snap
+                    if (ghostBox) {
+                        ghostBox.position.set(snappedX, selectedObject.position.y, snappedZ);
+                    }
 
                     // Cargo-snap: nếu thùng manual, tính lại độ cao ngay khi kéo để luôn "dính" mặt lớp dưới
                     const manualIdx = selectedObject.userData?.manualIdx;
@@ -1032,6 +1057,9 @@
                             drop.z = snappedZ;
                             drop.y = computeHeightAt(snappedX, snappedZ, drop.bL, drop.bW, p, drop._idx);
                             selectedObject.position.y = drop.y + drop.bH / 2;
+                            if (ghostBox) {
+                                ghostBox.position.y = selectedObject.position.y;
+                            }
                         }
                     }
                 }
@@ -1047,12 +1075,22 @@
             isDragging = false;
             isRotatingCamera = false;
 
+            if (ghostBox) {
+                ghostBox.visible = false;
+            }
+
             // Nếu kéo thả thùng manual, cập nhật vị trí + rơi xuống
             if (selectedObject && isManualMode && selectedObject.userData.manualIdx != null) {
                 const p = allPallets[currentPalletIdx];
                 if (p && p.manualDrops) {
                     const drop = p.manualDrops.find(d => d._idx === selectedObject.userData.manualIdx);
                     if (drop) {
+                        // Chốt vị trí thực tế vào đúng chỗ bóng mờ (đã snap)
+                        if (ghostBox) {
+                            selectedObject.position.x = ghostBox.position.x;
+                            selectedObject.position.z = ghostBox.position.z;
+                        }
+
                         const mode = document.getElementById('sideMode')?.value || 'none';
                         if (mode !== 'none') {
                             drop.x = selectedObject.position.x;

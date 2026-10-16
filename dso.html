@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
@@ -155,27 +155,9 @@
         const fileInput = document.getElementById('excelFile');
         const file = fileInput.files[0];
         if (!file) { alert('Vui lòng chọn file Excel!'); return; }
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
-            if (jsonData.length === 0) { alert('File Excel không có dữ liệu!'); return; }
-            const standardizedData = jsonData.map(row => ({
-                release_key: row['release_key'],
-                status: parseInt(row['status']) || 1,
-                huser_defined_02: row['huser_defined_02']
-            }));
-            uploadData(standardizedData);
-        };
-        reader.readAsArrayBuffer(file);
-    }
 
-    async function uploadData(data) {
-        if (!confirm(`HÀNH ĐỘNG NÀY SẼ XÓA TOÀN BỘ DỮ LIỆU CŨ!\nBạn có chắc muốn xóa hết và import ${data.length} dòng dữ liệu DSO mới?`)) return;
+        if (!confirm(`Bạn có chắc muốn đọc và import file Excel này không?`)) return;
         
-        // Hiển thị Modal
         const modal = document.getElementById('progressModal');
         const pBar = document.getElementById('progressBar');
         const pText = document.getElementById('progressText');
@@ -183,11 +165,49 @@
         
         modal.style.display = 'flex';
         resultBox.style.display = 'none';
+        pBar.style.width = '10%';
+        pText.innerText = 'Đang đọc dữ liệu từ file Excel...';
+
+        setTimeout(() => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false });
+                    if (jsonData.length === 0) { alert('File Excel không có dữ liệu!'); modal.style.display = 'none'; return; }
+                    const standardizedData = jsonData.map(row => ({
+                        release_key: row['release_key'],
+                        status: parseInt(row['status']) || 1,
+                        huser_defined_02: row['huser_defined_02']
+                    }));
+                    uploadData(standardizedData);
+                } catch (err) {
+                    alert('Lỗi xử lý file Excel: ' + err.message);
+                    modal.style.display = 'none';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }, 100);
+    }
+
+    async function uploadData(data) {
+        if (!confirm(`HÀNH ĐỘNG NÀY SẼ XÓA TOÀN BỘ DỮ LIỆU CŨ!\nBạn có chắc muốn xóa hết và import ${data.length} dòng dữ liệu DSO mới?`)) {
+            document.getElementById('progressModal').style.display = 'none';
+            return;
+        }
+        
+        // Hiển thị Modal
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('progressText');
+        const resultBox = document.getElementById('resultBox');
+        
         pBar.style.width = '0%';
         pBar.style.backgroundColor = '#007bff';
         pText.innerText = 'Đang chuẩn bị...';
 
-        const BATCH_SIZE = 50;
+        const BATCH_SIZE = 1000;
         let total = data.length;
         let processed = 0;
         let stats = { inserted: 0, updated: 0, total_deduped: 0 };

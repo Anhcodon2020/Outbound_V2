@@ -50,6 +50,16 @@
             padding-right: 10px;
             margin: 15px 0;
         }
+
+        /* Hiệu ứng nhấp nháy đỏ cho CBM quá hạn */
+        @keyframes blinkRed {
+            0% { color: #dc3545; }
+            50% { color: #ff0000; text-shadow: 0 0 8px rgba(255,0,0,0.6); }
+            100% { color: #dc3545; }
+        }
+        .blinking-red {
+            animation: blinkRed 1.2s infinite;
+        }
     </style>
 </head>
 <style>
@@ -81,6 +91,7 @@
             <input type="checkbox" id="chkMerge" style="width: auto; margin: 0;"> Giữ tồn kho cũ (Gộp thêm)
         </label>
         <button class="btn-import" onclick="importExcel()">📤 Tải lên</button>
+        <button class="btn-import" style="background-color: #17a2b8; margin-left: 10px;" onclick="openAddModal()">➕ Thêm thủ công</button>
     </div>
     
     <div class="search-container" style="display: flex; justify-content: space-between; align-items: center;">
@@ -97,6 +108,7 @@
         </div>
         <div style="font-size: 18px; font-weight: bold; background: #fff; padding: 10px 20px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
             📦 Tổng CBM: <span id="grandTotalCbm" style="color: #28a745; font-size: 1.2em;">0.0000</span> m³
+            <span style="font-size: 15px; color: #dc3545; margin-left: 20px; cursor: pointer;" onclick="openOverdueModal()" title="Click để xem danh sách chi tiết">⚠️ Lưu kho > 14 ngày: <span id="overdueCbm" style="font-weight: bold; font-size: 1.1em;">0.0000</span> m³</span>
         </div>
     </div>
 
@@ -107,6 +119,8 @@
                 <th>Parent PO</th>
                 <th>SKU</th>
                 <th>Qty Onhand</th>
+                <th>AX</th>
+                <th>Qty Rcv</th>
                 <th class="sortable" onclick="toggleSort()">Date Receive <span id="sortIcon">▼</span></th>
                 <th>Due Date (Days)</th>
                 <th>Total CBM (m³)</th>
@@ -115,11 +129,11 @@
             </tr>
         </thead>
         <tbody>
-            <tr><td colspan="9" style="text-align:center">⏳ Đang tải dữ liệu, vui lòng chờ...</td></tr>
+            <tr><td colspan="11" style="text-align:center">⏳ Đang tải dữ liệu, vui lòng chờ...</td></tr>
         </tbody>
         <tfoot id="invTableFooter" style="background: #f8f9fa; font-weight: bold;">
             <tr>
-                <td colspan="9" style="text-align:center; color: #64748b;">Đang tính toán thống kê...</td>
+                <td colspan="11" style="text-align:center; color: #64748b;">Đang tính toán thống kê...</td>
             </tr>
         </tfoot>
     </table>
@@ -139,6 +153,25 @@
     const pageSize = 50; // Số dòng trên mỗi trang
     let currentPage = 1;
 
+    // Hàm thống kê CBM cho các kiện hàng có due_date > 14 ngày
+    function calculateOverdueCbm(dataList) {
+        let overdueCbm = 0;
+        const today = new Date();
+        
+        dataList.forEach(item => {
+            if (item.date_rcv) {
+                const rcvDate = new Date(item.date_rcv);
+                const diffTime = today - rcvDate;
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                
+                if (diffDays > 14) {
+                    overdueCbm += parseFloat(item.total_cbm) || 0;
+                }
+            }
+        });
+        return overdueCbm;
+    }
+
     // Hàm render bảng
     function renderTable() {
         const tableBody = document.querySelector('#invTable tbody');
@@ -146,16 +179,34 @@
         tableBody.innerHTML = '';
         let totalCbmSum = 0;
         let totalQtySum = 0;
+        let totalAxSum = 0;
+        let totalQtyRcvSum = 0;
 
         // Tính tổng CBM trên TOÀN BỘ dữ liệu đã lọc (không chỉ trang hiện tại)
         filteredData.forEach(item => {
-            totalQtySum += Number(item.qty_invetory) || 0;
+            totalQtySum += Number(item.qty_inventory) || 0;
+            totalAxSum += Number(item.allocated_ctn || item.AX) || 0;
+            totalQtyRcvSum += Number(item.qty_rcv) || 0;
             totalCbmSum += parseFloat(item.total_cbm) || 0;
         });
         document.getElementById('grandTotalCbm').innerText = totalCbmSum.toFixed(4);
+        
+        // Hiển thị tổng CBM của hàng đã lưu kho > 14 ngày
+        const overdueTotal = calculateOverdueCbm(filteredData);
+        const overdueCbmEl = document.getElementById('overdueCbm');
+        if (overdueCbmEl) {
+            overdueCbmEl.innerText = overdueTotal.toFixed(4);
+            const overdueContainer = overdueCbmEl.parentElement;
+            // Ngưỡng cảnh báo nhấp nháy: > 10 CBM (bạn có thể thay đổi số 10 này)
+            if (overdueTotal > 10) {
+                overdueContainer.classList.add('blinking-red');
+            } else {
+                overdueContainer.classList.remove('blinking-red');
+            }
+        }
 
         if (filteredData.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center">Chưa có dữ liệu phù hợp</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="11" style="text-align:center">Chưa có dữ liệu phù hợp</td></tr>';
             document.getElementById('pageInfo').innerText = 'Trang 0/0';
             tableFooter.innerHTML = '';
             return;
@@ -183,6 +234,7 @@
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             const dueDateDisplay = isNaN(diffDays) ? '-' : diffDays;
             const dueDateStyle = diffDays > 14 ? 'background-color: #fee2e2; color: #b91c1c; font-weight: bold; text-align: center;' : 'text-align: center;';
+            const parentPoSafe = item.parent_po_invent ? item.parent_po_invent.toString().replace(/'/g, "\\'") : '';
 
             const row = document.createElement('tr');
             row.classList.add('clickable-row');
@@ -197,13 +249,15 @@
                 <td>${item.id}</td>
                 <td>${item.parent_po_invent || ''}</td>
                 <td>${item.sku_inventory || ''}</td>
-                <td>${item.qty_invetory || 0}</td>
+                <td>${item.qty_inventory || 0}</td>
+                <td>${item.allocated_ctn || item.AX || 0}</td>
+                <td>${item.qty_rcv || 0}</td>
                 <td>${formatDate(item.date_rcv)}</td>
                 <td style="${dueDateStyle}">${dueDateDisplay}</td>
                 <td style="font-weight:bold; color:#28a745;">${itemCbm.toFixed(4)} m³</td>
                 <td>${formatDate(item.date_update)}</td>
                 <td>
-                    <button class="btn-edit" onclick="openEditModal(${item.id}, ${item.qty_invetory || 0})">✏️ Sửa</button>
+                    <button class="btn-edit" onclick="openEditModal(${item.id}, ${item.qty_inventory || 0}, '${parentPoSafe}')">✏️ Sửa</button>
                 </td>
             `;
             tableBody.appendChild(row);
@@ -214,6 +268,8 @@
             <tr style="background: #f1f5f9; border-top: 2px solid #007bff;">
                 <td colspan="3" style="text-align: right; padding: 12px;">TỔNG CỘNG (Theo bộ lọc):</td>
                 <td style="padding: 12px; font-size: 1.1em; color: #007bff;">${totalQtySum.toLocaleString()}</td>
+                <td style="padding: 12px; font-size: 1.1em; color: #6610f2;">${totalAxSum.toLocaleString()}</td>
+                <td style="padding: 12px; font-size: 1.1em; color: #17a2b8;">${totalQtyRcvSum.toLocaleString()}</td>
                 <td colspan="2"></td>
                 <td style="padding: 12px; font-size: 1.1em; color: #28a745;">${totalCbmSum.toFixed(4)} m³</td>
                 <td colspan="2"></td>
@@ -277,7 +333,7 @@
             console.error('Lỗi tải dữ liệu Inventory:', err);
             const tableBody = document.querySelector('#invTable tbody');
             tableBody.innerHTML = `
-                <tr><td colspan="8" style="text-align:center; color:#dc3545; font-weight:bold; padding: 20px;">
+                <tr><td colspan="11" style="text-align:center; color:#dc3545; font-weight:bold; padding: 20px;">
                     ❌ Lỗi tải dữ liệu: ${err.message}<br>
                     <button onclick="location.reload()" style="margin-top:10px; cursor:pointer; padding:5px 10px;">Thử lại</button>
                 </td></tr>`;
@@ -308,8 +364,10 @@
             const standardizedData = jsonData.map(row => ({
                 parent_po_invent: row['user_defined_07'],
                 sku_inventory: row['sku'],
-                qty_invetory: parseInt(row['available_ctn'] ?? row['onhand_carton'] ?? row['allocated_ctn'] ?? 0) || 0,
-                date_rcv: row['receive_date'] // Giữ nguyên chuỗi ngày từ Excel
+                qty_inventory: parseInt(row['available_ctn'] ?? row['onhand_carton'] ?? row['allocated_ctn'] ?? 0) || 0,
+                allocated_ctn: parseInt(row['AX'] ?? row['ax'] ?? row['allocated_ctn'] ?? 0) || 0,
+                date_rcv: row['receive_date'], // Giữ nguyên chuỗi ngày từ Excel
+                qty_rcv: parseInt(row['total_carton'] ?? row['TOTAL_CARTON'] ?? row['bc'] ?? row['BC'] ?? 0) || 0
             }));
 
             uploadData(standardizedData);
@@ -317,24 +375,85 @@
         reader.readAsArrayBuffer(file);
     }
 
+    function updateRemaining() {
+        const orig = parseInt(document.getElementById('originalQty').value) || 0;
+        const newVal = parseInt(document.getElementById('editQty').value) || 0;
+        const diff = newVal - orig;
+        const disp = document.getElementById('dispRemaining');
+        disp.innerText = diff > 0 ? `+${diff}` : diff;
+        disp.style.color = diff > 0 ? '#28a745' : (diff < 0 ? '#dc3545' : '#6c757d');
+    }
+
+    // --- CHỨC NĂNG ADD ---
+    function openAddModal() {
+        document.getElementById('addParentPo').value = '';
+        document.getElementById('addSku').value = '';
+        document.getElementById('addQty').value = '';
+        document.getElementById('addDateRcv').value = new Date().toISOString().split('T')[0];
+        document.getElementById('addModal').style.display = 'flex';
+        document.getElementById('addParentPo').focus();
+    }
+
+    function closeAddModal() {
+        document.getElementById('addModal').style.display = 'none';
+    }
+
+    async function saveAddInventory() {
+        const parentPo = document.getElementById('addParentPo').value.trim();
+        const sku = document.getElementById('addSku').value.trim();
+        const qty = parseInt(document.getElementById('addQty').value) || 0;
+        const dateRcv = document.getElementById('addDateRcv').value;
+
+        if (!sku) {
+            alert('Vui lòng nhập SKU!');
+            return;
+        }
+        if (qty <= 0) {
+            alert('Số lượng phải lớn hơn 0!');
+            return;
+        }
+
+        const data = [{
+            parent_po_invent: parentPo,
+            sku_inventory: sku,
+            qty_inventory: qty,
+            date_rcv: dateRcv,
+            qty_rcv: qty
+        }];
+
+        try {
+            const response = await fetch('/api/inventory/import?mode=merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert('Thêm tồn kho thành công!');
+                closeAddModal();
+                fetch('/api/inventory').then(r => r.json()).then(d => { allData = d; filterData(); });
+            } else {
+                alert('Lỗi: ' + (result.error || 'Không xác định'));
+            }
+        } catch (error) {
+            console.error('Lỗi khi thêm:', error);
+            alert('Lỗi kết nối đến server.');
+        }
+    }
+
     // --- CHỨC NĂNG EDIT ---
-    function openEditModal(id, currentQty) {
+    function openEditModal(id, currentQty, parentPo) {
         document.getElementById('editId').value = id;
         document.getElementById('originalQty').value = currentQty;
+        document.getElementById('originalParentPo').value = parentPo || '';
+        document.getElementById('editParentPo').value = parentPo || '';
+        document.getElementById('editQty').value = currentQty;
         document.getElementById('dispCurrent').innerText = currentQty;
-        document.getElementById('editQty').value = '';
-        document.getElementById('dispRemaining').innerText = currentQty;
+        updateRemaining();
         document.getElementById('editModal').style.display = 'flex';
-        document.getElementById('editQty').focus();
-    }
-    
-    function updateRemaining() {
-        const original = parseInt(document.getElementById('originalQty').value) || 0;
-        const used = parseInt(document.getElementById('editQty').value) || 0;
-        const remaining = original - used;
-        const el = document.getElementById('dispRemaining');
-        el.innerText = remaining;
-        el.style.color = remaining < 0 ? 'red' : '#007bff';
+        document.getElementById('editParentPo').focus();
     }
 
     function closeEditModal() {
@@ -345,20 +464,25 @@
 
     function saveInventory() {
         const id = document.getElementById('editId').value;
-        const original = parseInt(document.getElementById('originalQty').value) || 0;
-        const used = parseInt(document.getElementById('editQty').value) || 0;
+        const originalQty = parseInt(document.getElementById('originalQty').value) || 0;
+        const originalParentPo = document.getElementById('originalParentPo').value;
         
-        if (used < 0) { alert('Số lượng sử dụng không được âm'); return; }
-        if (used > original) { alert('Không đủ tồn kho để sử dụng'); return; }
+        const newQty = parseInt(document.getElementById('editQty').value) || 0;
+        const parentPo = document.getElementById('editParentPo').value.trim();
+        
+        if (newQty < 0) { alert('Số lượng tồn kho không được âm'); return; }
 
-        const finalQty = original - used;
+        document.getElementById('confOldParentPo').innerText = originalParentPo || '(Trống)';
+        document.getElementById('confNewParentPo').innerText = parentPo || '(Trống)';
+        document.getElementById('confOldQty').innerText = originalQty;
+        document.getElementById('confNewQty').innerText = newQty;
         
-        // Hiển thị modal xác nhận thay vì confirm()
-        document.getElementById('confOriginal').innerText = original;
-        document.getElementById('confUsed').innerText = used;
-        document.getElementById('confFinal').innerText = finalQty;
-        
-        pendingData = { id: id, qty: finalQty };
+        const diff = newQty - originalQty;
+        const diffEl = document.getElementById('confDiff');
+        diffEl.innerText = diff > 0 ? `+${diff}` : diff;
+        diffEl.style.color = diff > 0 ? '#28a745' : (diff < 0 ? '#dc3545' : '#6c757d');
+
+        pendingData = { id: id, qty: newQty, parent_po: parentPo };
         document.getElementById('confirmModal').style.display = 'flex';
         document.getElementById('btnConfirmYes').focus();
     }
@@ -422,7 +546,11 @@
                 pBar.style.width = '100%';
                 pBar.style.backgroundColor = '#28a745';
                 pText.innerText = '✅ Cập nhật thành công!';
-                alert(`Hoàn tất!\nĐã thêm ${result.inserted} dòng vào hệ thống.`);
+                let alertMsg = `Hoàn tất!\n- Tổng số dòng nhận được: ${result.received}\n- Số dòng hợp lệ đã thêm: ${result.inserted}`;
+                if (result.filtered > 0) {
+                    alertMsg += `\n- Số dòng bị bỏ qua (do số lượng = 0): ${result.filtered}`;
+                }
+                alert(alertMsg);
                 location.reload();
             } else {
                 throw new Error(result.error || 'Lỗi không xác định');
@@ -440,11 +568,22 @@
     let lastBbrDetailData = []; // Lưu trữ dữ liệu để xuất Excel
     let lastBbrParams = { parentPo: '', sku: '' };
 
+    function formatReleaseStatus(status) {
+        const num = Number(status);
+        if (num === 1) return 'Open';
+        if (num === 3) return 'Allocate';
+        if (num === 7) return 'Close';
+        return status || '';
+    }
+
     async function openBbrDetailModal(parentPo, sku) {
         const modal = document.getElementById('bbrModal');
         const content = document.getElementById('bbrModalContent');
         content.innerHTML = '<p>Đang tải dữ liệu BBR...</p>';
         modal.style.display = 'flex';
+        const inventoryCarton = (Array.isArray(allData) ? allData : [])
+            .filter(item => item.parent_po_invent == parentPo && item.sku_inventory == sku)
+            .reduce((sum, item) => sum + (Number(item.qty_inventory) || 0), 0);
 
         try {
             const res = await fetch(`/api/bbr/detail?parent_po=${encodeURIComponent(parentPo)}&sku=${encodeURIComponent(sku)}`);
@@ -457,20 +596,13 @@
                 return;
             }
 
-            // Lọc chỉ những dòng có release_key hợp lệ (không null hoặc rỗng), theo yêu cầu
-            const filteredData = data.filter(row => row.release_key && row.release_key.trim() !== '');
-            if (filteredData.length === 0) {
-                content.innerHTML = `<div style="padding:20px; color:#ef4444;">⚠️ Không tìm thấy dữ liệu Releasing hợp lệ cho SKU này.</div>`;
-                lastBbrDetailData = [];
-                return;
-            }
-
-            // Nhóm dữ liệu theo Child PO và Release Key để mapping chính xác từ Releasing
+            // Nhóm dữ liệu theo Child PO và Release Key để gom các dòng cùng mapping.
+            // Nếu chưa map được sang releasing thì vẫn hiển thị dữ liệu BBR với release key trống.
             const groupedMap = new Map();
-            filteredData.forEach(row => { // Sử dụng filteredData đã lọc
+            data.forEach(row => {
 
                 const cpo = row.child_po;
-                const rk = row.release_key;
+                const rk = row.release_key || '';
                 const groupKey = `${cpo}||${rk}`;
                 
                 if (groupedMap.has(groupKey)) {
@@ -489,7 +621,7 @@
             });
 
             const processedData = Array.from(groupedMap.values());
-            lastBbrDetailData = filteredData; // Lưu dữ liệu đã lọc cho chức năng xuất Excel
+            lastBbrDetailData = data;
             lastBbrParams = { parentPo, sku };
 
             let totalBbr = 0, totalShipped = 0, totalBalance = 0, totalRelease = 0;
@@ -498,14 +630,17 @@
                 <div class="bbr-info-grid">
                     <div><span>Parent PO</span><strong>${parentPo}</strong></div>
                     <div><span>SKU</span><strong>${sku}</strong></div>
+                    <div><span>Tồn kho carton</span><strong>${inventoryCarton}</strong></div>
                 </div>
                 <table style="width:100%; font-size:13px; border-collapse:collapse;">
                     <thead>
                         <tr style="background:#f1f5f9;">
                             <th style="padding:8px; border:1px solid #e2e8f0;">Child PO</th>
                             <th style="padding:8px; border:1px solid #e2e8f0;">Release Key</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Tinh trang</th>
                             <th style="padding:8px; border:1px solid #e2e8f0;">Qty Release</th>
                             <th style="padding:8px; border:1px solid #e2e8f0;">Qty BBR</th>
+                            <th style="padding:8px; border:1px solid #e2e8f0;">Lech Rls-BBR</th>
                             <th style="padding:8px; border:1px solid #e2e8f0;">Ngày Nhận/Xuất</th>
                             <th style="padding:8px; border:1px solid #e2e8f0;">Qty Shipped</th>
                             <th style="padding:8px; border:1px solid #e2e8f0;">Balance</th>
@@ -520,6 +655,8 @@
                 const shippedQty = Number(row.qty_outbound) || 0;
                 const balance = bbrQty - shippedQty;
                 const releaseQty = Number(row.qty_release) || 0;
+                const releaseGap = releaseQty - bbrQty;
+                const releaseStatusText = formatReleaseStatus(row.release_status);
 
                 totalBbr += bbrQty;
                 totalShipped += shippedQty;
@@ -528,6 +665,8 @@
 
                 // Màu sắc: Đỏ nếu xuất quá, Xanh nếu hoàn thành, Xám nếu còn tồn
                 const balanceColor = balance < 0 ? '#dc3545' : (balance === 0 ? '#198754' : '#64748b');
+                const releaseGapColor = releaseGap === 0 ? '#198754' : (releaseGap > 0 ? '#b45309' : '#dc3545');
+                const releaseGapText = releaseGap === 0 ? 'OK' : (releaseGap > 0 ? `+${releaseGap}` : `${releaseGap}`);
                 let rowStyle = '';
                 if (balance < 0) rowStyle = 'background-color: #fff1f0;'; // Over-shipped (Đỏ)
                 else if (shippedQty === 0) rowStyle = 'background-color: #fffbeb;'; // Chưa xuất (Vàng nhạt)
@@ -536,8 +675,10 @@
                     <tr style="${rowStyle}" title="${shippedQty === 0 ? 'Child PO này chưa có dữ liệu xuất trong Outbound' : ''}">
                         <td style="padding:8px; border:1px solid #e2e8f0;">${row.child_po || ''}</td>
                         <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:#6366f1;">${row.release_key || '-'}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; text-align:center;">${releaseStatusText || '-'}</td>
                         <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; text-align:right;">${releaseQty}</td>
                         <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:#0d6efd; text-align:right;">${bbrQty}</td>
+                        <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:${releaseGapColor}; text-align:right;">${releaseGapText}</td>
                         <td style="padding:8px; border:1px solid #e2e8f0; font-size:11px; color:#64748b;">${row.date_list || '-'}</td>
                         <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:#16a34a; text-align:right;">${shippedQty}</td>
                         <td style="padding:8px; border:1px solid #e2e8f0; font-weight:bold; color:${balanceColor}; text-align:right;">${balance}</td>
@@ -550,9 +691,11 @@
                     <tfoot style="background:#f8f9fa; font-weight:bold;">
                         <tr>
                             <td colspan="2" style="padding:8px; border:1px solid #e2e8f0; text-align:center;">TỔNG CỘNG</td>
+                            <td style="padding:8px; border:1px solid #e2e8f0;"></td>
                             <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:#6366f1;">${totalRelease}</td>
                             <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:#0d6efd;">${totalBbr}</td>
                             <td style="padding:8px; border:1px solid #e2e8f0;"></td>
+                            <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:${(totalRelease - totalBbr) === 0 ? '#198754' : ((totalRelease - totalBbr) > 0 ? '#b45309' : '#dc3545')};">${(totalRelease - totalBbr) === 0 ? 'OK' : ((totalRelease - totalBbr) > 0 ? '+' : '') + (totalRelease - totalBbr)}</td>
                             <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:#16a34a;">${totalShipped}</td>
                             <td style="padding:8px; border:1px solid #e2e8f0; text-align:right; color:${totalBalance < 0 ? '#dc3545' : '#198754'};">${totalBalance}</td>
                             <td style="padding:8px; border:1px solid #e2e8f0;"></td>
@@ -578,10 +721,12 @@
         const exportData = lastBbrDetailData.map(row => ({
             "Child PO": row.child_po || '',
             "Release Key": row.release_key || '',
+            "Tinh trang": formatReleaseStatus(row.release_status) || '',
             "Job No": row.job_list || '',
             "Ngày Nhận/Xuất": row.date_list || '',
             "Qty Release": Number(row.qty_release) || 0,
             "Qty BBR": Number(row.qty_bbr) || 0,
+            "Lech Rls-BBR": (Number(row.qty_release) || 0) - (Number(row.qty_bbr) || 0),
             "Qty Shipped": Number(row.qty_outbound) || 0,
             "Balance": (Number(row.qty_bbr) || 0) - (Number(row.qty_outbound) || 0),
             "Ghi chú": row.remark || ''
@@ -613,7 +758,9 @@
                 "ID": item.id,
                 "Parent PO": item.parent_po_invent || '',
                 "SKU": item.sku_inventory || '',
-                "Số lượng": item.qty_invetory || 0,
+                "Số lượng": item.qty_inventory || 0,
+                "AX": item.allocated_ctn || item.AX || 0,
+                "Qty Rcv": item.qty_rcv || 0,
                 "Ngày nhận": formatDate(item.date_rcv),
                 "Due Date (Days)": isNaN(diffDays) ? '' : diffDays,
                 "Tổng CBM (m3)": (parseFloat(item.total_cbm) || 0).toFixed(4),
@@ -626,7 +773,7 @@
         XLSX.utils.book_append_sheet(wb, ws, "Inventory");
 
         // Tự động căn chỉnh độ rộng cột cơ bản cho file Excel
-        ws['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+        ws['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
 
         // Thực hiện tải file về máy
         XLSX.writeFile(wb, `Inventory_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
@@ -666,6 +813,43 @@
             resDiv.innerHTML = html;
         } catch(e) { resDiv.innerHTML = '<p style="color:red">Lỗi kết nối server</p>'; }
     }
+
+    // --- XEM CHI TIẾT HÀNG LƯU KHO QUÁ HẠN ---
+    function openOverdueModal() {
+        const tbody = document.getElementById('overdueModalBody');
+        tbody.innerHTML = '';
+        const today = new Date();
+
+        // Lọc và sắp xếp các kiện hàng quá 14 ngày (giảm dần theo số ngày)
+        const overdueItems = filteredData.filter(item => {
+            if (!item.date_rcv) return false;
+            const diffDays = Math.floor((today - new Date(item.date_rcv)) / (1000 * 60 * 60 * 24));
+            item.diffDays = diffDays;
+            return diffDays > 14;
+        }).sort((a, b) => b.diffDays - a.diffDays);
+
+        if (overdueItems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 15px;">Không có kiện hàng nào lưu kho quá 14 ngày</td></tr>';
+        } else {
+            overdueItems.forEach(item => {
+                const tr = document.createElement('tr');
+                const cbm = (parseFloat(item.total_cbm) || 0).toFixed(4);
+                tr.innerHTML = `
+                    <td style="padding: 8px; border: 1px solid #ddd;">${item.parent_po_invent || ''}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>${item.sku_inventory || ''}</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align:right;">${item.qty_inventory || 0}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align:center;">${formatDate(item.date_rcv)}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align:center; color: #dc3545; font-weight:bold;">${item.diffDays}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; text-align:right; color: #28a745;">${cbm}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        document.getElementById('overdueModal').style.display = 'flex';
+    }
+    function closeOverdueModal() {
+        document.getElementById('overdueModal').style.display = 'none';
+    }
 </script>
 
 <!-- Modal Progress -->
@@ -682,13 +866,46 @@
     </div>
 </div>
 
+<!-- Modal Add Inventory -->
+<div id="addModal" class="modal-overlay">
+    <div class="modal-content" style="width: 350px;">
+        <h3>Thêm Tồn Kho Thủ Công</h3>
+        <div style="margin: 10px 0; text-align:left;">
+            <label>Parent PO:</label>
+            <input type="text" id="addParentPo" placeholder="Nhập Parent PO..." style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="margin: 10px 0; text-align:left;">
+            <label>SKU:</label>
+            <input type="text" id="addSku" placeholder="Nhập SKU..." style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="margin: 10px 0; text-align:left;">
+            <label>Số lượng (Onhand):</label>
+            <input type="number" id="addQty" placeholder="Nhập số lượng..." style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="margin: 10px 0; text-align:left;">
+            <label>Ngày nhận (Date Rcv):</label>
+            <input type="date" id="addDateRcv" style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+            <button class="btn-import" onclick="saveAddInventory()">Thêm mới</button>
+            <button onclick="closeAddModal()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Hủy</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Edit Inventory -->
 <div id="editModal" class="modal-overlay">
     <div class="modal-content" style="width: 300px;">
-        <h3>Xuất kho / Sử dụng</h3>
+        <h3>Cập nhật Tồn kho</h3>
         <input type="hidden" id="editId">
         <input type="hidden" id="originalQty">
+        <input type="hidden" id="originalParentPo">
         
+        <div style="margin: 10px 0; text-align:left;">
+            <label>Parent PO:</label>
+            <input type="text" id="editParentPo" placeholder="Nhập Parent PO..." style="padding: 8px; width: 100%; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc;">
+        </div>
+
         <div style="margin: 10px 0; text-align:left;">Tồn hiện tại: <strong id="dispCurrent">0</strong></div>
 
         <div style="margin: 15px 0; text-align:left;">
@@ -699,7 +916,7 @@
         <div style="margin: 10px 0; text-align:left;">Còn lại: <strong id="dispRemaining" style="color:#007bff">0</strong></div>
 
         <div style="display: flex; gap: 10px; justify-content: center;">
-            <button class="btn-import" onclick="saveInventory()">Xác nhận xuất</button>
+            <button class="btn-import" onclick="saveInventory()">Xác nhận</button>
             <button onclick="closeEditModal()" style="padding: 8px 15px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Hủy</button>
         </div>
     </div>
@@ -708,17 +925,24 @@
 <!-- Modal Confirm UI -->
 <div id="confirmModal" class="modal-overlay" style="z-index: 1100;">
     <div class="modal-content" style="width: 350px; border-top: 5px solid #007bff;">
-        <h3 style="margin-top:0; color: #333;">⚠️ Xác nhận Xuất kho</h3>
+        <h3 style="margin-top:0; color: #333;">⚠️ Xác nhận Cập nhật</h3>
         <div style="text-align: left; background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; border: 1px solid #ddd;">
             <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span>📦 Tồn hiện tại:</span> <strong id="confOriginal" style="font-size:1.1em">0</strong>
+                    <span>📑 Parent PO cũ:</span> <strong id="confOldParentPo" style="font-size:1em; color:#6c757d;"></strong>
             </div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px; color:#dc3545;">
-                <span>➖ Sử dụng:</span> <strong id="confUsed" style="font-size:1.1em">0</strong>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span>📑 Parent PO mới:</span> <strong id="confNewParentPo" style="font-size:1em; color:#0d6efd;"></strong>
             </div>
+                <div style="border-top:1px dashed #bbb; margin:8px 0;"></div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span>📦 Tồn cũ:</span> <strong id="confOldQty" style="font-size:1.1em">0</strong>
+            </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px; color:#007bff;">
+                    <span>📦 Tồn mới:</span> <strong id="confNewQty" style="font-size:1.1em">0</strong>
+                </div>
             <div style="border-top:1px dashed #bbb; margin:8px 0;"></div>
-            <div style="display:flex; justify-content:space-between; color:#28a745; font-size:1.2em;">
-                <span>✅ Tồn sau xuất:</span> <strong id="confFinal">0</strong>
+                <div style="display:flex; justify-content:space-between; font-size:1.1em;">
+                    <span>Chênh lệch:</span> <strong id="confDiff">0</strong>
             </div>
         </div>
         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
@@ -757,6 +981,34 @@
         <div style="display: flex; gap: 10px; justify-content: flex-end;">
             <button class="btn-import" style="background:#6366f1;" onclick="startLookup()">Tìm kiếm</button>
             <button class="btn-import" style="background:#6c757d;" onclick="closeLookupModal()">Đóng</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Hàng Quá Hạn -->
+<div id="overdueModal" class="modal-overlay">
+    <div class="modal-content" style="width: 700px; max-width: 95vw;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                <h3 id="overdueModalTitle" style="margin: 0; color: #dc3545;">⚠️ Danh sách lưu kho > 14 ngày</h3>
+            <span style="cursor: pointer; font-size: 28px; font-weight: bold; color: #aaa; line-height: 1;" onclick="closeOverdueModal()" onmouseover="this.style.color='#000'" onmouseout="this.style.color='#aaa'">&times;</span>
+        </div>
+        <div style="max-height: 60vh; overflow-y: auto; margin-top: 15px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                <thead style="background: #f8f9fa; position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="padding: 8px; border: 1px solid #ddd;">Parent PO</th>
+                        <th style="padding: 8px; border: 1px solid #ddd;">SKU</th>
+                        <th style="padding: 8px; border: 1px solid #ddd; text-align:right;">Qty</th>
+                        <th style="padding: 8px; border: 1px solid #ddd; text-align:center;">Ngày nhận</th>
+                        <th style="padding: 8px; border: 1px solid #ddd; text-align:center;">Số ngày</th>
+                        <th style="padding: 8px; border: 1px solid #ddd; text-align:right;">CBM</th>
+                    </tr>
+                </thead>
+                <tbody id="overdueModalBody"></tbody>
+            </table>
+        </div>
+        <div style="text-align: right; margin-top: 15px;">
+            <button onclick="closeOverdueModal()" style="padding: 8px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Đóng</button>
         </div>
     </div>
 </div>

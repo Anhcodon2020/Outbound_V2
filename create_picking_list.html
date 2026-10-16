@@ -41,9 +41,24 @@
         .modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         .split-info-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
         .inv-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; align-items: center; }
+        .page-loading { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.42); backdrop-filter: blur(3px); z-index: 2000; align-items: center; justify-content: center; }
+        .page-loading.show { display: flex; }
+        .loading-card { min-width: 260px; padding: 24px 28px; border-radius: 16px; background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%); box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25); text-align: center; border: 1px solid rgba(13, 110, 253, 0.12); }
+        .loading-spinner { width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 50%; border: 4px solid #dbeafe; border-top-color: #0d6efd; animation: spin 0.9s linear infinite; }
+        .loading-title { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+        .loading-text { font-size: 13px; color: #64748b; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+
+<div id="pageLoading" class="page-loading" aria-live="polite" aria-busy="true">
+    <div class="loading-card">
+        <div class="loading-spinner"></div>
+        <div class="loading-title">Đang tải dữ liệu</div>
+        <div id="loadingText" class="loading-text">Vui lòng chờ trong giây lát...</div>
+    </div>
+</div>
 
 <div class="container">
     <div class="nav">
@@ -86,11 +101,42 @@
             <strong>📊 Thống kê CBM theo FDC:</strong>
             <div id="fdcStats"></div>
         </div>
-        <div id="userSelectionSummary" class="summary-box" style="flex-direction: column; gap: 5px; background: #e8f5e9; padding: 10px; border: 1px solid #c3e6cb; border-radius: 5px; min-width: 200px; display: none;">
+        <div id="userSelectionSummary" class="summary-box" style="flex-direction: column; gap: 5px; background: #e8f5e9; padding: 10px; border: 1px solid #c3e6cb; border-radius: 5px; min-width: 240px; display: none;">
             <strong>✅ Đã chọn (User Selected):</strong>
             <div>Số dòng: <span id="userSelCount" style="font-weight:bold">0</span></div>
             <div>Carton: <span id="userSelQty" style="font-weight:bold; color:#d63384">0</span></div>
             <div>CBM: <span id="userSelCbm" style="font-weight:bold; color:#d63384">0.000</span> m³</div>
+            <div>Loại Pallet: <span id="userSelPalletType" style="font-weight:bold; color:#0d6efd">-</span></div>
+            <div>Breakdown Pallet: <span id="userSelPalletBreakdown" style="font-weight:bold; color:#0d6efd">-</span></div>
+            <div>Số Pallet: <span id="userSelPalletCount" style="font-weight:bold; color:#0d6efd">0</span></div>
+        </div>
+    </div>
+
+    <div id="selectedPalletBlock" style="position: sticky; top: 0; z-index: 900; background: #fff; padding: 8px 0; margin-bottom: 20px; box-shadow: 0 4px 6px -4px rgba(0,0,0,0.25);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin: 0 0 10px; gap: 10px; flex-wrap: wrap;">
+            <h3 style="margin: 0; color: #198754;">✅             Selected PALLET theo FDC</h3>
+            <div style="background: #e8f5e9; border: 1px solid #c3e6cb; border-radius: 6px; padding: 8px 12px; font-weight: bold; color: #198754; display:flex; gap: 16px; align-items:center; flex-wrap: wrap;">
+                <span>Selected total carton: <strong id="selectedTotalCartonLabel" style="color: #d63384;">0</strong></span>
+                <span>Selected total pallet: <strong id="selectedTotalPalletLabel" style="color: #0d6efd;">0</strong></span>
+                <span>Selected total CBM: <span id="selectedTotalCbmLabel" style="color: #d63384;">0.000</span> m³</span>
+            </div>
+        </div>
+        <div style="overflow: auto; max-height: 35vh; border: 1px solid #c3e6cb; border-radius: 8px; background: #fff;">
+            <table id="selectedFdcPalletTable" style="width: 100%; border-collapse: collapse; min-width: 760px;">
+                <thead>
+                    <tr>
+                        <th style="padding: 10px; background: #198754; color: white;">FDC</th>
+                        <th style="padding: 10px; background: #198754; color: white; text-align: right;">Số Carton</th>
+                        <th style="padding: 10px; background: #198754; color: white; text-align: center;">Loại Pallet</th>
+                        <th style="padding: 10px; background: #198754; color: white; text-align: right;">Số Pallet</th>
+                        <th style="padding: 10px; background: #198754; color: white; text-align: right;">CBM</th>
+                        <th style="padding: 10px; background: #198754; color: white; text-align: center;">Tối ưu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="6" style="text-align:center; padding:14px;">Chưa có dòng nào được chọn</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -101,6 +147,7 @@
                 <th>Parent PO</th>
                 <th>Release Key</th>
                 <th>SKU</th>
+                <th>Tên Nhà Cung Cấp</th>
                 <th>Child PO</th>
                 <th>Due Date (Days)</th>
                 <th style="text-align: right;">Số Lượng (Ctn)</th>
@@ -114,7 +161,7 @@
             </tr>
         </thead>
         <tbody>
-            <tr><td colspan="13" style="text-align:center">Đang tải dữ liệu...</td></tr>
+            <tr><td colspan="15" style="text-align:center">Đang tải dữ liệu...</td></tr>
         </tbody>
     </table>
 </div>
@@ -191,22 +238,605 @@
 <script>
     let allData = [];
     let inventoryData = []; // Biến lưu tồn kho
+    let masterData = []; // Biến lưu masterdata
+    let nhacungcapData = []; // Biến lưu nhà cung cấp
     let currentJobData = [];
     let selectedIds = new Set();
     let lastSelectedJob = '';
     let splitItem = null; // Biến tạm lưu dòng đang tách
     let currentDeductItem = null; // Item đang xử lý trừ tồn kho
+    let selectedCbmTotal = 0;
+    let selectedCartonTotal = 0;
+
+    function showPageLoading(message = 'Vui lòng chờ trong giây lát...') {
+        const overlay = document.getElementById('pageLoading');
+        const text = document.getElementById('loadingText');
+        if (text) text.innerText = message;
+        if (overlay) overlay.classList.add('show');
+    }
+
+    function hidePageLoading() {
+        const overlay = document.getElementById('pageLoading');
+        if (overlay) overlay.classList.remove('show');
+    }
+
+    function showToast(icon, title, text = '') {
+        return Swal.fire({
+            icon,
+            title,
+            text,
+            confirmButtonText: 'Đóng',
+            confirmButtonColor: '#0d6efd'
+        });
+    }
+
+    function confirmBox({ title, text, icon = 'question', confirmButtonText = 'Đồng ý', cancelButtonText = 'Hủy' }) {
+        return Swal.fire({
+            title,
+            text,
+            icon,
+            showCancelButton: true,
+            confirmButtonText,
+            cancelButtonText,
+            confirmButtonColor: '#0d6efd',
+            cancelButtonColor: '#6c757d'
+        });
+    }
+
+    window.alert = function(message) {
+        showToast('info', 'Thông báo', String(message || ''));
+    };
+
+    function normalizePalletKind(value) {
+        if (value === null || value === undefined) return '';
+        return String(value).trim().toLowerCase().replace(/[\s_]+/g, '');
+    }
+
+    function getPalletInfoByKind(kindpallet, totalCbm) {
+        const normalized = normalizePalletKind(kindpallet);
+        const cbm = Number(totalCbm) || 0;
+
+        if (!normalized) {
+            return { label: 'Unknown', palletCount: cbm > 0 ? cbm : 0, leftover: 0, capacity: 0, isOversize: true };
+        }
+
+        if (normalized.includes('1m2') || normalized.includes('1.2') || normalized.includes('m2')) {
+            const capacity = 3;
+            const palletCount = cbm > 0 ? Math.ceil(cbm / capacity) : 0;
+            const leftover = cbm > 0 ? cbm - ((palletCount - 1) * capacity) : 0;
+            return { label: '1m2', palletCount, leftover, capacity, isOversize: false };
+        }
+
+        if (normalized.includes('1m6') || normalized.includes('1.6') || normalized.includes('m6')) {
+            const capacity = 4;
+            const palletCount = cbm > 0 ? Math.ceil(cbm / capacity) : 0;
+            const leftover = cbm > 0 ? cbm - ((palletCount - 1) * capacity) : 0;
+            return { label: '1m6/4', palletCount, leftover, capacity, isOversize: false };
+        }
+
+        if (normalized.includes('1m9') || normalized.includes('1.9') || normalized.includes('m9')) {
+            const capacity = 4.75;
+            const palletCount = cbm > 0 ? Math.ceil(cbm / capacity) : 0;
+            const leftover = cbm > 0 ? cbm - ((palletCount - 1) * capacity) : 0;
+            return { label: '1m9/4.75', palletCount, leftover, capacity, isOversize: false };
+        }
+
+        if (normalized.includes('oversize') || normalized.includes('over') || normalized.includes('large') || normalized.includes('custom')) {
+            return { label: 'Oversize', palletCount: cbm > 0 ? cbm : 0, leftover: 0, capacity: 0, isOversize: true };
+        }
+
+        return { label: 'Unknown', palletCount: cbm > 0 ? cbm : 0, leftover: 0, capacity: 0, isOversize: true };
+    }
+
+    function getOptimizeInfo(kindpallet, totalCbm) {
+        const normalized = normalizePalletKind(kindpallet);
+        const cbm = Number(totalCbm) || 0;
+        let capacity = 0;
+        if (normalized) {
+            if (normalized.includes('1m2') || normalized.includes('1.2') || normalized.includes('m2')) capacity = 3;
+            else if (normalized.includes('1m6') || normalized.includes('1.6') || normalized.includes('m6')) capacity = 3.86;
+            else if (normalized.includes('1m9') || normalized.includes('1.9') || normalized.includes('m9')) capacity = 4.58;
+        }
+        if (!capacity || cbm <= 0) return null;
+        const mod = Math.round((cbm % capacity) * 1000) / 1000;
+        const isMod = mod > 0.001 && capacity - mod > 0.001;
+        return { capacity, mod: isMod ? mod : 0, optimized: !isMod };
+    }
+
+    function getSelectedRowsForJob(job) {
+        if (!job) return [];
+        return allData.filter(item => item.picking_no === job && selectedIds.has(item.id));
+    }
+
+    function updateUserSelectionStats() {
+        const summary = document.getElementById('userSelectionSummary');
+        const sticky = document.getElementById('stickySummary');
+        const rows = getSelectedRowsForJob(document.getElementById('jobSelect').value);
+        const totalQty = rows.reduce((sum, item) => sum + (Number(item.carton_qty) || 0), 0);
+        const totalCbm = rows.reduce((sum, item) => sum + (Number(item.total_cbm) || 0), 0);
+        const count = rows.length;
+
+        selectedCartonTotal = totalQty;
+        selectedCbmTotal = totalCbm;
+
+        summary.style.display = count > 0 ? 'flex' : 'none';
+        sticky.style.display = count > 0 ? 'flex' : 'none';
+
+        let palletLabel = '-';
+        let palletBreakdown = '-';
+        let palletCount = 0;
+
+        if (rows.length > 0) {
+            const palletMap = new Map();
+            rows.forEach(item => {
+                const meta = masterData.find(m => (m.sku || '').toString().trim().toUpperCase() === (item.sku || '').toString().trim().toUpperCase());
+                const kindpallet = meta ? meta.kindpallet : '';
+                const normalized = normalizePalletKind(kindpallet);
+                const key = normalized || 'Unknown';
+                const cbmValue = Number(item.total_cbm) || 0;
+                palletMap.set(key, (palletMap.get(key) || 0) + cbmValue);
+            });
+
+            const entries = [...palletMap.entries()].map(([kind, cbmValue]) => {
+                const info = getPalletInfoByKind(kind, cbmValue);
+                return {
+                    kind: info.label,
+                    cbm: cbmValue,
+                    count: info.palletCount,
+                    capacity: info.capacity || 0,
+                    isOversize: info.isOversize
+                };
+            }).sort((a, b) => b.cbm - a.cbm);
+
+            if (entries.length > 0) {
+                palletBreakdown = entries.map(entry => `${entry.kind}: ${entry.count}`).join(' | ');
+                palletCount = entries.reduce((sum, entry) => sum + Number(entry.count || 0), 0);
+                palletLabel = entries.length > 1 ? 'Nhiều loại' : entries[0].kind;
+            }
+        }
+
+        document.getElementById('userSelCount').innerText = count;
+        document.getElementById('userSelQty').innerText = totalQty.toLocaleString();
+        document.getElementById('userSelCbm').innerText = totalCbm.toFixed(3);
+        document.getElementById('userSelPalletType').innerText = palletLabel;
+        document.getElementById('userSelPalletBreakdown').innerText = palletBreakdown;
+        document.getElementById('userSelPalletCount').innerText = palletCount.toLocaleString();
+        document.getElementById('stickyCount').innerText = count;
+        document.getElementById('stickyQty').innerText = totalQty.toLocaleString();
+        document.getElementById('stickyCbm').innerText = totalCbm.toFixed(3);
+    }
+
+    async function applyBulkSelection(shouldSelect) {
+        const items = [...currentJobData];
+        for (const item of items) {
+            if (shouldSelect && !selectedIds.has(item.id)) {
+                try {
+                    await checkInventoryAndSelect(item);
+                } catch (err) {
+                    console.error(err);
+                    await showToast('error', 'Không thể chọn hàng loạt', err.message || '');
+                    break;
+                }
+            }
+            if (!shouldSelect && selectedIds.has(item.id)) {
+                try {
+                    await returnInventoryAndDeselect(item);
+                } catch (err) {
+                    console.error(err);
+                    await showToast('error', 'Không thể bỏ chọn hàng loạt', err.message || '');
+                    break;
+                }
+            }
+        }
+        renderTable();
+    }
+
+    function toggleSelectAll() {
+        const checkBox = document.getElementById('selectAllBox');
+        if (!checkBox) return;
+        applyBulkSelection(checkBox.checked);
+    }
+
+    function getInventoryQtyForSku(sku) {
+        return (inventoryData || []).
+            filter(inv => (inv.sku_inventory || '').toString().trim().toUpperCase() === (sku || '').toString().trim().toUpperCase())
+            .reduce((sum, inv) => sum + (Number(inv.qty_inventory) || 0), 0);
+    }
+
+    async function updateInventoryQtyById(inventoryId, newQty) {
+        if (!inventoryId || !Number.isFinite(Number(inventoryId))) return;
+        const res = await fetch('/api/inventory/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: Number(inventoryId), qty: Number(newQty) })
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(json.error || 'Không thể cập nhật tồn kho');
+        }
+        return json;
+    }
+
+    async function deductInventoryForSelectedItem(item) {
+        const needed = Number(item.carton_qty) || 0;
+        if (needed <= 0) return;
+
+        const matching = (inventoryData || [])
+            .filter(inv => (inv.sku_inventory || '').toString().trim().toUpperCase() === (item.sku || '').toString().trim().toUpperCase())
+            .filter(inv => (Number(inv.qty_inventory) || 0) > 0)
+            .sort((a, b) => new Date(a.date_rcv || 0) - new Date(b.date_rcv || 0));
+
+        let remaining = needed;
+        for (const inv of matching) {
+            if (remaining <= 0) break;
+            const current = Number(inv.qty_inventory) || 0;
+            if (current <= 0) continue;
+            const useQty = Math.min(current, remaining);
+            const nextQty = current - useQty;
+            remaining -= useQty;
+            await updateInventoryQtyById(inv.id, nextQty);
+            const idx = inventoryData.findIndex(x => Number(x.id) === Number(inv.id));
+            if (idx >= 0) inventoryData[idx].qty_inventory = nextQty;
+        }
+
+        if (remaining > 0) {
+            throw new Error(`SKU ${item.sku} không đủ tồn kho để chọn đủ ${needed} carton.`);
+        }
+    }
+
+    async function restoreInventoryForSelectedItem(item) {
+        const needed = Number(item.carton_qty) || 0;
+        if (needed <= 0) return;
+
+        const matching = (inventoryData || [])
+            .filter(inv => (inv.sku_inventory || '').toString().trim().toUpperCase() === (item.sku || '').toString().trim().toUpperCase())
+            .filter(inv => Number(inv.qty_inventory) >= 0)
+            .sort((a, b) => new Date(a.date_rcv || 0) - new Date(b.date_rcv || 0));
+
+        let remaining = needed;
+        for (const inv of matching) {
+            if (remaining <= 0) break;
+            const current = Number(inv.qty_inventory) || 0;
+            const restored = Math.min(remaining, needed);
+            const nextQty = current + restored;
+            remaining -= restored;
+            await updateInventoryQtyById(inv.id, nextQty);
+            const idx = inventoryData.findIndex(x => Number(x.id) === Number(inv.id));
+            if (idx >= 0) inventoryData[idx].qty_inventory = nextQty;
+        }
+    }
+
+    async function checkInventoryAndSelect(item) {
+        if (!item) return;
+        if (selectedIds.has(item.id)) return;
+
+        try {
+            await deductInventoryForSelectedItem(item);
+            selectedIds.add(item.id);
+            renderTable();
+        } catch (err) {
+            console.error(err);
+            await showToast('error', 'Không thể chọn SKU', err.message || '');
+        }
+    }
+
+    async function returnInventoryAndDeselect(item) {
+        if (!item) return;
+        if (!selectedIds.has(item.id)) return;
+
+        try {
+            await restoreInventoryForSelectedItem(item);
+            selectedIds.delete(item.id);
+            renderTable();
+        } catch (err) {
+            console.error(err);
+            await showToast('error', 'Không thể bỏ chọn SKU', err.message || '');
+        }
+    }
+
+    function openSplitModal(id) {
+        const item = currentJobData.find(row => row.id === id);
+        if (!item) return;
+        splitItem = item;
+
+        const qty = Number(item.carton_qty) || 0;
+        const cbm = Number(item.total_cbm) || 0;
+        document.getElementById('spOrigQty').innerText = qty;
+        document.getElementById('spOrigCbm').innerText = cbm.toFixed(3);
+        document.getElementById('spInput').value = '';
+        document.getElementById('spNewQty').innerText = '0';
+        document.getElementById('spNewCbm').innerText = '0 m³';
+        document.getElementById('spRemQty').innerText = '0';
+        document.getElementById('spRemCbm').innerText = '0 m³';
+        document.getElementById('splitModal').style.display = 'flex';
+    }
+
+    function closeSplitModal() {
+        document.getElementById('splitModal').style.display = 'none';
+        splitItem = null;
+    }
+
+    function calcSplit() {
+        if (!splitItem) return;
+        const origQty = Number(splitItem.carton_qty) || 0;
+        const origCbm = Number(splitItem.total_cbm) || 0;
+        const splitQty = Number(document.getElementById('spInput').value) || 0;
+        const safeSplit = Math.min(Math.max(splitQty, 0), origQty);
+        const newQty = safeSplit;
+        const remQty = origQty - newQty;
+        const newCbm = origCbm * (newQty / (origQty || 1));
+        const remCbm = origCbm - newCbm;
+
+        document.getElementById('spNewQty').innerText = newQty;
+        document.getElementById('spNewCbm').innerText = `${newCbm.toFixed(3)} m³`;
+        document.getElementById('spRemQty').innerText = remQty;
+        document.getElementById('spRemCbm').innerText = `${remCbm.toFixed(3)} m³`;
+    }
+
+    async function submitSplit() {
+    if (!splitItem) return;
+
+    const origQty = Number(splitItem.carton_qty) || 0;
+    const origCbm = Number(splitItem.total_cbm) || 0;
+    const splitQty = Number(document.getElementById('spInput').value) || 0;
+
+    // Kiểm tra số lượng tách
+    if (splitQty <= 0 || splitQty >= origQty) {
+        Swal.fire(
+            'Lỗi',
+            'Vui lòng nhập số lượng tách hợp lệ nhỏ hơn số lượng hiện tại.',
+            'warning'
+        );
+        return;
+    }
+
+    // Tách không phải là thao tác pick. Nếu dòng gốc đang được chọn,
+    // hoàn trả toàn bộ lượng đã trừ trước khi bỏ trạng thái chọn.
+    if (selectedIds.has(splitItem.id)) {
+        try {
+            await restoreInventoryForSelectedItem(splitItem);
+        } catch (err) {
+            console.error(err);
+            await showToast('error', 'Không thể hoàn trả tồn kho', err.message || '');
+            return;
+        }
+        selectedIds.delete(splitItem.id);
+    }
+
+    // ================================
+    // 1. GỌI API TÁCH CARTON (LƯU VÀO DB - THÊM RECORD MỚI TRONG detail_pickinglist)
+    // ================================
+    let result;
+    try {
+        const res = await fetch('/api/check_clp/split', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: splitItem.id, split_carton: splitQty })
+        });
+        result = await res.json();
+        if (!res.ok) {
+            throw new Error(result.error || 'Lỗi tách carton');
+        }
+    } catch (err) {
+        console.error(err);
+        Swal.fire('Lỗi', err.message || 'Không thể tách carton', 'error');
+        return;
+    }
+
+    // ================================
+    // 2. CẬP NHẬT DÒNG CŨ THEO KẾT QUẢ TỪ SERVER
+    // ================================
+    splitItem.carton_qty = result.updated.carton_qty;
+    splitItem.total_cbm = result.updated.total_cbm;
+
+    // ================================
+    // 3. TẠO DÒNG MỚI (giống record gốc, chỉ khác số carton & cbm) THEO ID SERVER TRẢ VỀ
+    // ================================
+    const newItem = {
+        ...splitItem,
+        id: result.inserted.id,
+        carton_qty: result.inserted.carton_qty,
+        total_cbm: result.inserted.total_cbm,
+        is_split: true,
+        split_from_id: splitItem.id,
+        // Không tự động chọn dòng mới => Không trừ Inventory
+    };
+
+    // ================================
+    // 4. THÊM DÒNG MỚI VÀO DỮ LIỆU
+    // ================================
+    const index = allData.findIndex(
+        item => item.id === splitItem.id
+    );
+
+    if (index >= 0) {
+        allData.splice(index + 1, 0, newItem);
+    } else {
+        allData.push(newItem);
+    }
+
+    closeSplitModal();
+
+    // ================================
+    // 5. RENDER LẠI
+    // ================================
+    renderTable();
+
+    Swal.fire({
+        icon: 'success',
+        title: 'Tách carton thành công',
+        text: `Đã tách ${result.inserted.carton_qty} carton. Còn lại ${result.updated.carton_qty} carton.`,
+        timer: 1800,
+        showConfirmButton: false
+    });
+}
+
+
+    function exportSelectedToExcel() {
+        const selectedRows = getSelectedRowsForJob(document.getElementById('jobSelect').value);
+        if (!selectedRows.length) {
+            Swal.fire('Thông báo', 'Chưa có dòng nào được chọn để xuất Excel.', 'info');
+            return;
+        }
+
+        const ws = XLSX.utils.json_to_sheet(selectedRows.map(item => ({
+            'Parent PO': item.parentpo || '',
+            'Release Key': item.release_key || '',
+            'SKU': item.sku || '',
+            'Child PO': item.childpo || '',
+            'FDC': item.fdc || '',
+            'Số lượng': Number(item.carton_qty) || 0,
+            'CBM': Number(item.total_cbm) || 0,
+            'Due Date': item.due_date || ''
+        })));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Selected');
+        XLSX.writeFile(wb, `selected_picking_${(document.getElementById('jobSelect').value || 'job')}.xlsx`);
+    }
+
+    function exportToExcel() {
+        const rows = currentJobData || [];
+        if (!rows.length) {
+            Swal.fire('Thông báo', 'Chưa có dữ liệu để xuất Excel.', 'info');
+            return;
+        }
+
+        const ws = XLSX.utils.json_to_sheet(rows.map(item => ({
+            'Parent PO': item.parentpo || '',
+            'Release Key': item.release_key || '',
+            'SKU': item.sku || '',
+            'Child PO': item.childpo || '',
+            'FDC': item.fdc || '',
+            'Số lượng': Number(item.carton_qty) || 0,
+            'CBM': Number(item.total_cbm) || 0,
+            'Due Date': item.due_date || '',
+            'Tồn kho': getInventoryQtyForSku(item.sku)
+        })));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'PickingList');
+        XLSX.writeFile(wb, `picking_list_${(document.getElementById('jobSelect').value || 'job')}.xlsx`);
+    }
+
+    async function moveToOutbound() {
+        const ids = [...selectedIds];
+        if (!ids.length) {
+            Swal.fire('Lỗi', 'Vui lòng chọn ít nhất 1 dòng để export outbound.', 'warning');
+            return;
+        }
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const hubdcName = String(
+            (allData.find(item => selectedIds.has(item.id) && item.hubdc) || {}).hubdc || 'hubdc'
+        ).trim();
+        const jobPrefix = `${hubdcName}_${now.getFullYear()}_${pad(now.getMonth() + 1)}_${pad(now.getDate())}_`;
+
+        const { value: seq, isConfirmed } = await Swal.fire({
+            title: 'Nhập Job No',
+            html: `<div style="display:flex; align-items:center; justify-content:center; gap:4px;">
+                       <span style="font-weight:bold;">${jobPrefix}</span>
+                       <input id="jobSeqInput" type="number" min="0" max="99" value="01" class="swal2-input" style="width:90px; margin:0;">
+                   </div>`,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Xác nhận',
+            cancelButtonText: 'Hủy',
+            preConfirm: () => {
+                const v = document.getElementById('jobSeqInput').value.trim();
+                if (!/^\d{1,2}$/.test(v)) {
+                    Swal.showValidationMessage('Vui lòng nhập số xx hợp lệ (0-99)');
+                    return false;
+                }
+                return pad(Number(v));
+            }
+        });
+
+        if (!isConfirmed || !seq) return;
+        const jobno = jobPrefix + seq;
+
+        try {
+            const selectedRows = getSelectedRowsForJob(document.getElementById('jobSelect').value);
+            const actualPickingNo = selectedRows[0]?.picking_no || String(jobno).trim();
+
+            const res = await fetch('/api/check_clp/outbound', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ids,
+                    jobno: String(jobno).trim(),
+                    picking_no: String(actualPickingNo).trim()
+                })
+            });
+            const json = await res.json();
+            if (!res.ok) {
+                throw new Error(json.error || 'Lỗi export outbound');
+            }
+            Swal.fire('Thành công', `Đã chuyển ${json.inserted || ids.length} dòng sang outbound.`, 'success');
+            selectedIds.clear();
+            await loadData();
+        } catch (err) {
+            console.error(err);
+            Swal.fire('Lỗi', err.message || 'Không thể export outbound.', 'error');
+        }
+    }
+
+    async function clearPickingList() {
+        const confirm = await Swal.fire({
+            title: 'Xác nhận',
+            text: 'Bạn có chắc muốn xóa hết Picking List?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Xóa hết',
+            cancelButtonText: 'Hủy'
+        });
+
+        if (!confirm.isConfirmed) return;
+
+        try {
+            const res = await fetch('/api/check_clp/clear', { method: 'POST' });
+            let json = {};
+            try {
+                json = await res.json();
+            } catch (_) {
+                json = {};
+            }
+
+            if (!res.ok) {
+                throw new Error(json.error || `Lỗi HTTP ${res.status || ''}`.trim() || 'Lỗi xóa');
+            }
+
+            selectedIds.clear();
+            allData = [];
+            await loadData();
+            await showToast('success', 'Đã xóa', json.message || 'Picking List đã được xóa.');
+        } catch (err) {
+            console.error(err);
+            const message = err instanceof TypeError && err.message === 'Failed to fetch'
+                ? 'Không thể kết nối tới server backend. Vui lòng kiểm tra server đang chạy và thử lại.'
+                : (err.message || 'Không thể xóa Picking List.');
+            await showToast('error', 'Lỗi xóa Picking List', message);
+        }
+    }
 
     async function loadData() {
+        showPageLoading('Đang tải Picking List, Inventory, Master Data và DC...');
         try {
-            // Sử dụng API check_clp để lấy toàn bộ detail_pickinglist
-            const [resClp, resInv] = await Promise.all([
+            // Tải dữ liệu CLP, Inventory, Masterdata, Nhà Cung Cấp
+            const [resClp, resInv, resMaster, resNcc] = await Promise.all([
                 fetch('/api/check_clp'),
-                fetch('/api/inventory')
+                fetch('/api/inventory'),
+                fetch('/api/masterdata'),
+                fetch('/api/nhacungcap').catch(() => ({ json: () => [] })) // Fallback nếu API lỗi
             ]);
             
             const data = await resClp.json();
-            inventoryData = await resInv.json(); // Lưu inventory
+            const invJson = await resInv.json().catch(() => []);
+            const masterJson = await resMaster.json().catch(() => []);
+            const nccJson = await resNcc.json().catch(() => []);
+
+            inventoryData = Array.isArray(invJson) ? invJson : []; // Lưu inventory an toàn
+            masterData = Array.isArray(masterJson) ? masterJson : []; // Lưu masterdata an toàn
+            nhacungcapData = Array.isArray(nccJson) ? nccJson : []; // Lưu nhà cung cấp an toàn
             
             if (Array.isArray(data)) {
                 // Lọc chỉ lấy những dòng có picking_no (đã được tạo job)
@@ -224,7 +854,9 @@
             }
         } catch (error) {
             console.error('Lỗi tải dữ liệu:', error);
-            alert('Không thể tải dữ liệu Picking List.');
+            await showToast('error', 'Không thể tải dữ liệu Picking List.', error.message || '');
+        } finally {
+            hidePageLoading();
         }
     }
 
@@ -266,6 +898,243 @@
         });
     }
 
+    function renderSelectedFdcPalletSummary() {
+        const tbody = document.querySelector('#selectedFdcPalletTable tbody');
+        const totalCartonLabel = document.getElementById('selectedTotalCartonLabel');
+        const totalCbmLabel = document.getElementById('selectedTotalCbmLabel');
+        const totalPalletLabel = document.getElementById('selectedTotalPalletLabel');
+        if (!tbody) return;
+
+        const selectedRows = getSelectedRowsForJob(document.getElementById('jobSelect').value);
+        const totalSelectedCarton = selectedRows.reduce((sum, item) => sum + (Number(item.carton_qty) || 0), 0);
+        const totalSelectedCbm = selectedRows.reduce((sum, item) => sum + (Number(item.total_cbm) || 0), 0);
+        if (totalCartonLabel) {
+            totalCartonLabel.innerText = totalSelectedCarton.toLocaleString();
+        }
+        if (totalCbmLabel) {
+            totalCbmLabel.innerText = totalSelectedCbm.toFixed(3);
+        }
+
+        tbody.innerHTML = '';
+
+        if (!selectedRows.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:14px;">Chưa có dòng nào được chọn</td></tr>';
+            if (totalCartonLabel) totalCartonLabel.innerText = '0';
+            if (totalPalletLabel) totalPalletLabel.innerText = '0';
+            return;
+        }
+
+        const masterMap = new Map((masterData || []).map(m => [
+            (m.sku || '').toString().trim(),
+            { cbm: Number(m.cbm) || 0, kindpallet: m.kindpallet || '' }
+        ]));
+
+        const agg = new Map();
+        selectedRows.forEach(item => {
+            const fdc = ((item.fdc || 'N/A')).toString().trim() || 'N/A';
+            const sku = ((item.sku || 'N/A')).toString().trim() || 'N/A';
+            const carton = Number(item.carton_qty) || 0;
+            const cbm = Number(item.total_cbm) || 0;
+            const meta = masterMap.get(sku) || { cbm: 0, kindpallet: '' };
+            const kindLabel = getPalletInfoByKind(meta.kindpallet, 0).label;
+            const key = `${fdc}||${kindLabel}`;
+
+            if (!agg.has(key)) {
+                agg.set(key, { fdc, carton: 0, cbm: 0, kindpallet: meta.kindpallet || '' });
+            }
+
+            const current = agg.get(key);
+            current.carton += carton;
+            current.cbm += cbm;
+        });
+
+        const rows = Array.from(agg.values()).map(entry => {
+            const info = getPalletInfoByKind(entry.kindpallet, entry.cbm);
+            return {
+                ...entry,
+                palletType: info.label,
+                palletCount: info.palletCount,
+                leftover: info.leftover,
+                isOversize: info.isOversize
+            };
+        }).sort((a, b) => {
+            const fdcCompare = (a.fdc || '').localeCompare(b.fdc || '');
+            if (fdcCompare !== 0) return fdcCompare;
+            return (a.palletType || '').localeCompare(b.palletType || '');
+        });
+
+        const totalSelectedPallet = rows.reduce((sum, row) => sum + (Number(row.palletCount) || 0), 0);
+        if (totalPalletLabel) {
+            totalPalletLabel.innerText = totalSelectedPallet.toLocaleString();
+        }
+
+        const byFdc = new Map();
+        rows.forEach(row => {
+            if (!byFdc.has(row.fdc)) byFdc.set(row.fdc, []);
+            byFdc.get(row.fdc).push(row);
+        });
+
+        let sawRows = false;
+        [...byFdc.keys()].sort().forEach(fdc => {
+            const group = byFdc.get(fdc);
+            const subtotalCarton = group.reduce((sum, row) => sum + (Number(row.carton) || 0), 0);
+            const subtotalCbm = group.reduce((sum, row) => sum + (Number(row.cbm) || 0), 0);
+            const subtotalPallet = group.reduce((sum, row) => sum + (Number(row.palletCount) || 0), 0);
+
+            const header = document.createElement('tr');
+            header.innerHTML = `<td colspan="6" style="background:#f8f9fa; font-weight:bold; color:#198754; padding:10px 12px; border-top:1px solid #ddd; border-bottom:1px solid #ddd;">FDC: ${fdc}</td>`;
+            tbody.appendChild(header);
+
+            group.forEach(row => {
+                const remainderText = row.leftover > 0 && !row.isOversize ? ` <span style="color:#d63384; font-size:11px;">(dư ${row.leftover.toFixed(3)} cbm)</span>` : '';
+                const opt = getOptimizeInfo(row.kindpallet, row.cbm);
+                const optHtml = !opt
+                    ? '-'
+                    : opt.optimized
+                        ? `<span style="color:#198754; font-weight:bold;">✔ Tối ưu</span>`
+                        : `<span style="color:#dc3545; font-weight:bold;">✘ Chưa tối ưu (dư ${opt.mod.toFixed(3)}/${opt.capacity})</span>`;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="padding: 10px 12px;">${row.fdc}</td>
+                    <td style="padding: 10px 12px; text-align:right;">${(Number(row.carton) || 0).toLocaleString()}</td>
+                    <td style="padding: 10px 12px; text-align:center;">${row.palletType}${remainderText}</td>
+                    <td style="padding: 10px 12px; text-align:right;">${(Number(row.palletCount) || 0).toLocaleString()}</td>
+                    <td style="padding: 10px 12px; text-align:right; color:#198754; font-weight:bold;">${(Number(row.cbm) || 0).toFixed(3)}</td>
+                    <td style="padding: 10px 12px; text-align:center;">${optHtml}</td>
+                `;
+                tbody.appendChild(tr);
+                sawRows = true;
+            });
+
+            const subtotal = document.createElement('tr');
+            subtotal.style.background = '#e8f5e9';
+            subtotal.innerHTML = `
+                <td style="padding:10px 12px; font-weight:bold;">TOTAL</td>
+                <td style="padding:10px 12px; text-align:right; font-weight:bold;">${subtotalCarton.toLocaleString()}</td>
+                <td style="padding:10px 12px; text-align:center; font-weight:bold;">-</td>
+                <td style="padding:10px 12px; text-align:right; font-weight:bold;">${subtotalPallet.toLocaleString()}</td>
+                <td style="padding:10px 12px; text-align:right; font-weight:bold; color:#d63384;">${subtotalCbm.toFixed(3)}</td>
+                <td></td>
+            `;
+            tbody.appendChild(subtotal);
+        });
+
+        if (!sawRows) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:14px;">Chưa có dòng nào được chọn</td></tr>';
+        }
+    }
+
+    function renderFdcPalletSummary() {
+        const tbody = document.querySelector('#fdcPalletTable tbody');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+        if (!currentJobData || !currentJobData.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:14px;">Chưa có dữ liệu</td></tr>';
+            return;
+        }
+
+        const masterMap = new Map((masterData || []).map(m => [
+            (m.sku || '').toString().trim(),
+            { cbm: Number(m.cbm) || 0, kindpallet: m.kindpallet || '' }
+        ]));
+
+        const agg = new Map();
+        currentJobData.forEach(item => {
+            const fdc = ((item.fdc || 'N/A')).toString().trim() || 'N/A';
+            const sku = ((item.sku || 'N/A')).toString().trim() || 'N/A';
+            const carton = Number(item.carton_qty) || 0;
+            const cbm = Number(item.total_cbm) || 0;
+            const meta = masterMap.get(sku) || { cbm: 0, kindpallet: '' };
+            const key = `${fdc}||${sku}`;
+
+            if (!agg.has(key)) {
+                agg.set(key, {
+                    fdc,
+                    sku,
+                    carton: 0,
+                    cbm: 0,
+                    kindpallet: meta.kindpallet || ''
+                });
+            }
+
+            const current = agg.get(key);
+            current.carton += carton;
+            current.cbm += cbm;
+            current.kindpallet = current.kindpallet || meta.kindpallet || '';
+        });
+
+        const rows = Array.from(agg.values()).map(entry => {
+            const info = getPalletInfoByKind(entry.kindpallet, entry.cbm);
+            return {
+                ...entry,
+                palletType: info.label,
+                palletCount: info.palletCount,
+                leftover: info.leftover,
+                isOversize: info.isOversize
+            };
+        }).sort((a, b) => {
+            const fdcCompare = (a.fdc || '').localeCompare(b.fdc || '');
+            if (fdcCompare !== 0) return fdcCompare;
+            return (a.sku || '').localeCompare(b.sku || '');
+        });
+
+        const byFdc = new Map();
+        rows.forEach(row => {
+            if (!byFdc.has(row.fdc)) byFdc.set(row.fdc, []);
+            byFdc.get(row.fdc).push(row);
+        });
+
+        const fdcOrder = [...byFdc.keys()].sort();
+        let sawRows = false;
+
+        fdcOrder.forEach(fdc => {
+            const group = byFdc.get(fdc);
+            const subtotalCarton = group.reduce((sum, row) => sum + (Number(row.carton) || 0), 0);
+            const subtotalCbm = group.reduce((sum, row) => sum + (Number(row.cbm) || 0), 0);
+            const subtotalPallet = group.reduce((sum, row) => sum + (Number(row.palletCount) || 0), 0);
+
+            const groupHeader = document.createElement('tr');
+            groupHeader.innerHTML = `
+                <td colspan="6" style="background:#f8f9fa; font-weight:bold; color:#0d6efd; padding:10px 12px; border-top:1px solid #ddd; border-bottom:1px solid #ddd;">
+                    FDC: ${fdc}
+                </td>
+            `;
+            tbody.appendChild(groupHeader);
+
+            group.forEach(row => {
+                const remainderText = row.leftover > 0 && !row.isOversize ? ` <span style="color:#d63384; font-size:11px;">(dư ${row.leftover.toFixed(3)} cbm)</span>` : '';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="padding: 10px 12px;">${row.fdc}</td>
+                    <td style="padding: 10px 12px;">${row.sku}</td>
+                    <td style="padding: 10px 12px; text-align:right;">${(Number(row.carton) || 0).toLocaleString()}</td>
+                    <td style="padding: 10px 12px; text-align:center;">${row.palletType}${remainderText}</td>
+                    <td style="padding: 10px 12px; text-align:right;">${(Number(row.palletCount) || 0).toLocaleString()}</td>
+                    <td style="padding: 10px 12px; text-align:right; color:#0d6efd; font-weight:bold;">${(Number(row.cbm) || 0).toFixed(3)}</td>
+                `;
+                tbody.appendChild(tr);
+                sawRows = true;
+            });
+
+            const subtotal = document.createElement('tr');
+            subtotal.style.background = '#fff3cd';
+            subtotal.innerHTML = `
+                <td style="padding:10px 12px; font-weight:bold;">TOTAL</td>
+                <td style="padding:10px 12px; font-weight:bold;">${fdc}</td>
+                <td style="padding:10px 12px; text-align:right; font-weight:bold;">${subtotalCarton.toLocaleString()}</td>
+                <td style="padding:10px 12px; text-align:center; font-weight:bold;">-</td>
+                <td style="padding:10px 12px; text-align:right; font-weight:bold;">${subtotalPallet.toLocaleString()}</td>
+                <td style="padding:10px 12px; text-align:right; font-weight:bold; color:#d63384;">${subtotalCbm.toFixed(3)}</td>
+            `;
+            tbody.appendChild(subtotal);
+        });
+
+        if (!sawRows) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:14px;">Chưa có dữ liệu</td></tr>';
+        }
+    }
+
     function renderTable() {
         const selectedJob = document.getElementById('jobSelect').value;
         const tbody = document.querySelector('#pickingTable tbody');
@@ -275,6 +1144,10 @@
 
         // Reset selection nếu đổi job khác
         if (selectedJob !== lastSelectedJob) {
+            const previousSelectedItems = getSelectedRowsForJob(lastSelectedJob);
+            previousSelectedItems.forEach(item => {
+                restoreInventoryForSelectedItem(item).catch(err => console.error('Restore inventory on job switch failed:', err));
+            });
             selectedIds.clear();
             lastSelectedJob = selectedJob;
             if (selectAllBox) selectAllBox.checked = false;
@@ -284,7 +1157,7 @@
         tbody.innerHTML = '';
 
         if (!selectedJob) {
-            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center">Vui lòng chọn Picking Job để xem chi tiết</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="15" style="text-align:center">Vui lòng chọn Picking Job để xem chi tiết</td></tr>';
             summaryBox.style.display = 'none';
             fdcStatsDiv.innerHTML = '';
             return;
@@ -316,6 +1189,12 @@
         let totalCbm = 0;
         const fdcMap = new Map();
 
+        // Tạo Map tra cứu nhanh tên NCC từ Master Data
+        // Sử dụng .toUpperCase() và .trim() để đảm bảo map chính xác ngay cả khi lệch chữ hoa/thường
+        const masterMap = new Map(masterData.map(m => [(m.sku || '').toString().trim().toUpperCase(), m.MANCC || '']));
+        // Tạo Map tra cứu từ MANCC -> name_doc trong bảng nhacungcap
+        const nccMap = new Map((Array.isArray(nhacungcapData) ? nhacungcapData : []).map(n => [(n.MANCC || n.mancc || '').toString().trim().toUpperCase(), n.name_doc || '']));
+
         currentJobData.forEach((item, index) => {
             const qty = Number(item.carton_qty) || 0;
             const cbm = Number(item.total_cbm) || 0;
@@ -326,12 +1205,16 @@
             const matchDeduct = remark.match(/\[Trừ:\s*(\d+)\]/);
             const deductedQty = matchDeduct ? parseInt(matchDeduct[1]) : 0;
 
-            // Tính tồn kho hiện tại mapping theo ParentPO + SKU
-            const inventoryMatch = inventoryData.filter(inv => inv.parent_po_invent == item.parentpo && inv.sku_inventory == item.sku);
-            const invQty = inventoryMatch.reduce((sum, inv) => sum + (Number(inv.qty_invetory) || 0), 0);
+            // Tính tồn kho khả dụng theo SKU; khi trừ sẽ ưu tiên Parent PO đang picking trước.
+            const inventoryMatch = inventoryData.filter(inv => inv.sku_inventory == item.sku);
+            const invQty = inventoryMatch.reduce((sum, inv) => sum + (Number(inv.qty_inventory) || 0), 0);
 
             totalQty += qty;
             totalCbm += cbm;
+
+            // Lấy tên nhà cung cấp từ bảng nhacungcap.name_doc theo MANCC
+            const mancc = masterMap.get((item.sku || '').toString().trim().toUpperCase()) || '';
+            const nccName = nccMap.get(mancc.toUpperCase()) || '';
 
             // Tính thống kê FDC
             if (!fdcMap.has(fdc)) fdcMap.set(fdc, 0);
@@ -360,24 +1243,17 @@
 
             // Click vào dòng để chọn
             row.onclick = (e) => {
-                if (invQty <= 0 && !selectedIds.has(item.id)) {
-                    if (e.target.type !== 'checkbox') {
-                        Swal.fire('Thất bại', 'Mã hàng này hiện không có tồn kho để chọn!', 'error');
-                    }
-                    return;
-                }
                 if (e.target.type !== 'checkbox') toggleRow(item.id);
             };
             // Ưu tiên màu vàng cho dòng được chọn, nếu không thì tô màu theo Parent PO
             row.style.backgroundColor = isChecked ? '#fff3cd' : rowColor;
 
-            const disabledAttr = invQty <= 0 && !selectedIds.has(item.id) ? 'disabled' : '';
-
             row.innerHTML = `
-                <td style="text-align: center;"><input type="checkbox" ${isChecked} ${disabledAttr} onchange="toggleRow(${item.id})"></td>
+                <td style="text-align: center;"><input type="checkbox" ${isChecked} onchange="toggleRow(${item.id})"></td>
                 <td>${item.parentpo || ''}</td>
                 <td style="${rKeyStyle}">${item.release_key || ''}</td>
                 <td><strong>${item.sku || ''}</strong></td>
+                <td>${nccName}</td>
                 <td>${item.childpo || ''}</td>
                 <td style="text-align: center; font-weight: bold;">${item.due_date || ''}</td>
                 <td style="text-align: right; font-weight:bold;">${qty}</td>
@@ -387,7 +1263,7 @@
                 <td>${item.length_cm || 0}</td>
                 <td>${item.width_cm || 0}</td>
                 <td>${item.height_cm || 0}</td>
-                <td style="text-align: center;"><button class="btn" style="padding:4px 8px; font-size:12px; background-color:#17a2b8;" onclick="openSplitModal(${item.id})">✂️ Tách</button></td>
+                <td style="text-align: center;"><button class="btn" style="padding:4px 8px; font-size:12px; background-color:#17a2b8;" onclick="openSplitModal(${JSON.stringify(item.id)})">✂️ Tách</button></td>
             `;
             tbody.appendChild(row);
         });
@@ -407,6 +1283,7 @@
         document.getElementById('sumCbm').innerText = totalCbm.toFixed(3);
 
         updateUserSelectionStats();
+        renderSelectedFdcPalletSummary();
     }
 
     function toggleRow(id) {
@@ -428,570 +1305,8 @@
         renderTable(); 
     }
 
-    async function checkInventoryAndSelect(item) {
-        const parentPo = item.parentpo || '';
-        const sku = item.sku || '';
-        const pickQty = Number(item.carton_qty) || 0;
-
-        // Tìm các dòng inventory khớp
-        const matches = inventoryData.filter(inv => inv.parent_po_invent == parentPo && inv.sku_inventory == sku && (Number(inv.qty_invetory) > 0));
-
-        // Nếu không có tồn kho -> báo lỗi và KHÔNG cho chọn
-        if (matches.length === 0) {
-            Swal.fire({
-                title: 'Không thể chọn', 
-                text: 'Mã hàng này hiện không có tồn kho!',
-                icon: 'error',
-                confirmButtonText: 'Đóng'
-            });
-            renderTable();
-            return;
-        }
-
-        const askDeduct = await Swal.fire({
-            title: 'Trừ Tồn Kho?',
-            html: `SKU: <b>${sku}</b><br>ParentPO: <b>${parentPo}</b><br><br>Bạn có muốn TRỪ TỒN KHO cho dòng này không?`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Có',
-            cancelButtonText: 'Không'
-        });
-
-        if (!askDeduct.isConfirmed) {
-            await fetch('/api/check_clp/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: item.id, is_selected: 1 })
-            });
-            item.is_selected = 1;
-            selectedIds.add(item.id);
-            renderTable();
-            return;
-        }
-
-        // LOGIC TRỪ TỒN KHO
-        if (matches.length === 1) {
-            // --- AUTO DEDUCT (1 dòng) ---
-            const inv = matches[0];
-            const invQty = Number(inv.qty_invetory) || 0;
-            const deductQty = Math.min(pickQty, invQty);
-            const remaining = invQty - deductQty;
-
-            const askAuto = await Swal.fire({
-                title: 'Tự động trừ',
-                html: `Tìm thấy 1 dòng tồn kho:<br>- ID: <b>${inv.id}</b><br>- Tồn: <b>${invQty}</b><br><br>Hệ thống dự kiến trừ <b style="color:#d33">${deductQty}</b> carton.<br>Còn lại: <b>${remaining}</b>`,
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonText: 'Xác nhận trừ',
-                cancelButtonText: 'Hủy'
-            });
-
-            if (askAuto.isConfirmed) {
-                await executeDeduct(inv.id, remaining);
-                // Cập nhật lại local inventoryData để đồng bộ
-                inv.qty_invetory = remaining;
-
-                const newRemark = (item.remark || '').replace(/\[Trừ:\s*\d+\]/g, '').trim() + ` [Trừ: ${deductQty}]`;
-                
-                let payload = { id: item.id, is_selected: 1, remark: newRemark.trim() };
-                if (pickQty > deductQty) {
-                    const cbmPerCarton = Number(item.cbm_per_carton) || (Number(item.total_cbm) / pickQty) || 0;
-                    payload.carton_qty = deductQty;
-                    payload.total_cbm = deductQty * cbmPerCarton;
-                    item.carton_qty = payload.carton_qty;
-                    item.total_cbm = payload.total_cbm;
-                }
-
-                await fetch('/api/check_clp/update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                item.remark = newRemark.trim();
-                item.is_selected = 1;
-
-                selectedIds.add(item.id);
-                renderTable();
-                Swal.fire({ title: 'Thành công', text: 'Đã trừ tồn kho tự động.', icon: 'success', timer: 1500, showConfirmButton: false });
-            } else {
-                // Nếu hủy trừ thì vẫn chọn dòng picking (theo logic popup)
-                await fetch('/api/check_clp/update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: item.id, is_selected: 1 })
-                });
-                item.is_selected = 1;
-
-                selectedIds.add(item.id);
-                renderTable();
-            }
-        } else {
-            // --- MANUAL SELECT (>1 dòng) ---
-            openDeductModal(item, matches);
-        }
-    }
-
-    // Hàm hoàn trả tồn kho khi bỏ chọn
-    async function returnInventoryAndDeselect(item) {
-        const remark = item.remark || '';
-        const match = remark.match(/\[Trừ:\s*(\d+)\]/);
-        const deductedQty = match ? parseInt(match[1]) : 0;
-
-        if (deductedQty > 0) {
-            const askReturn = await Swal.fire({
-                title: 'Hoàn trả Tồn kho',
-                html: `Dòng này đã trừ <b>${deductedQty}</b> carton.<br>Bạn có muốn HOÀN TRẢ lại vào kho và BỎ CHỌN không?`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Hoàn trả',
-                cancelButtonText: 'Hủy'
-            });
-            if (!askReturn.isConfirmed) return;
-
-            // Tìm tồn kho tương ứng để trả lại (ParentPO + SKU)
-            const targets = inventoryData.filter(inv => 
-                inv.parent_po_invent == item.parentpo && 
-                inv.sku_inventory == item.sku
-            );
-
-            if (targets.length === 0) {
-                Swal.fire('Lỗi', 'Không tìm thấy bản ghi Inventory tương ứng để hoàn trả.\nVui lòng kiểm tra lại dữ liệu.', 'error');
-                return;
-            }
-
-            // Ưu tiên trả vào dòng có date_rcv mới nhất hoặc dòng đầu tiên tìm thấy
-            // (Vì ta không lưu ID inventory cụ thể lúc trừ, nên trả vào dòng khớp SKU+PO là hợp lý nhất)
-            const targetInv = targets[0]; 
-            const newQty = (Number(targetInv.qty_invetory) || 0) + deductedQty;
-
-            try {
-                const res = await fetch('/api/inventory/update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: targetInv.id, qty: newQty })
-                });
-
-                if (!res.ok) throw new Error('Lỗi cập nhật server');
-                
-                // Cập nhật local data
-                targetInv.qty_invetory = newQty;
-                Swal.fire({ title: 'Hoàn trả thành công', icon: 'success', timer: 1500, showConfirmButton: false });
-            } catch (err) {
-                Swal.fire('Lỗi hoàn kho', err.message, 'error');
-                return;
-            }
-        }
-
-        // Cập nhật dòng Picking: Bỏ chọn & Xóa remark [Trừ: ...]
-        const newRemark = remark.replace(/\[Trừ:\s*\d+\]/g, '').trim();
-        
-        await fetch('/api/check_clp/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: item.id, is_selected: 0, remark: newRemark })
-        });
-
-        item.is_selected = 0;
-        item.remark = newRemark;
-        selectedIds.delete(item.id);
-        renderTable();
-    }
-
-    // API update tồn kho
-    async function executeDeduct(invId, newQty) {
-        try {
-            const res = await fetch('/api/inventory/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: invId, qty: newQty })
-            });
-            if (!res.ok) throw new Error('Lỗi server');
-        } catch (err) {
-            Swal.fire('Lỗi', 'Lỗi cập nhật tồn kho: ' + err.message, 'error');
-        }
-    }
-
-    // UI Modal Logic cho nhiều dòng
-    function openDeductModal(item, invList) {
-        currentDeductItem = item;
-        document.getElementById('deductSku').innerText = item.sku;
-        document.getElementById('deductNeed').innerText = item.carton_qty;
-        
-        const listDiv = document.getElementById('deductList');
-        listDiv.innerHTML = '';
-
-        invList.sort((a,b) => new Date(a.date_rcv) - new Date(b.date_rcv)); // Xếp FIFO
-
-        invList.forEach(inv => {
-            const div = document.createElement('div');
-            div.className = 'inv-row';
-            div.innerHTML = `
-                <div style="flex:1; font-size:12px;">${inv.date_rcv ? inv.date_rcv.slice(0,10) : 'N/A'} (ID:${inv.id})</div>
-                <div style="width:80px; text-align:right; font-weight:bold;">${inv.qty_invetory}</div>
-                <input type="number" class="deduct-input" data-invid="${inv.id}" data-current="${inv.qty_invetory}" style="width:80px; margin-left:10px; padding:4px;" placeholder="0" min="0" max="${inv.qty_invetory}">
-            `;
-            listDiv.appendChild(div);
-        });
-
-        document.getElementById('deductModal').style.display = 'flex';
-    }
-
-    function closeDeductModal() {
-        document.getElementById('deductModal').style.display = 'none';
-        if (currentDeductItem) {
-            // Nếu đóng mà không xác nhận -> coi như chỉ chọn picking list mà không trừ
-            fetch('/api/check_clp/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: currentDeductItem.id, is_selected: 1 })
-            });
-            currentDeductItem.is_selected = 1;
-
-            selectedIds.add(currentDeductItem.id);
-            renderTable();
-            currentDeductItem = null;
-        }
-    }
-
-    async function submitDeduct() {
-        const inputs = document.querySelectorAll('.deduct-input');
-        let totalDeduct = 0;
-        const updates = [];
-
-        for (const input of inputs) {
-            const val = Number(input.value) || 0;
-            if (val > 0) {
-                const current = Number(input.dataset.current);
-                if (val > current) {
-                    Swal.fire('Lỗi', 'Số lượng trừ không được lớn hơn tồn kho!', 'error');
-                    return;
-                }
-                updates.push({ id: input.dataset.invid, newQty: current - val, deduct: val, refInv: inventoryData.find(i => i.id == input.dataset.invid) });
-                totalDeduct += val;
-            }
-        }
-
-        const need = Number(currentDeductItem.carton_qty) || 0;
-        if (totalDeduct !== need) {
-            const askMulti = await Swal.fire({
-                title: 'Xác nhận trừ',
-                text: `Bạn đang trừ ${totalDeduct} carton (Yêu cầu: ${need}). Bạn có chắc chắn không?`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Đồng ý',
-                cancelButtonText: 'Hủy'
-            });
-            if (!askMulti.isConfirmed) return;
-        }
-
-        // Thực hiện trừ
-        for (const up of updates) {
-            await executeDeduct(up.id, up.newQty);
-            // Update local
-            if (up.refInv) up.refInv.qty_invetory = up.newQty;
-        }
-
-        if (totalDeduct > 0) {
-            const newRemark = (currentDeductItem.remark || '').replace(/\[Trừ:\s*\d+\]/g, '').trim() + ` [Trừ: ${totalDeduct}]`;
-            let payload = { id: currentDeductItem.id, is_selected: 1, remark: newRemark.trim() };
-            
-            if (totalDeduct < need) {
-                const cbmPerCarton = Number(currentDeductItem.cbm_per_carton) || (Number(currentDeductItem.total_cbm) / need) || 0;
-                payload.carton_qty = totalDeduct;
-                payload.total_cbm = totalDeduct * cbmPerCarton;
-                currentDeductItem.carton_qty = payload.carton_qty;
-                currentDeductItem.total_cbm = payload.total_cbm;
-            }
-
-            await fetch('/api/check_clp/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            currentDeductItem.remark = newRemark.trim();
-            currentDeductItem.is_selected = 1;
-        } else {
-            await fetch('/api/check_clp/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: currentDeductItem.id, is_selected: 1 })
-            });
-            currentDeductItem.is_selected = 1;
-        }
-
-        Swal.fire({ title: 'Thành công', text: `Đã trừ thành công ${totalDeduct} carton từ ${updates.length} dòng inventory.`, icon: 'success', timer: 2000, showConfirmButton: false });
-
-        
-        // Hoàn tất chọn
-        document.getElementById('deductModal').style.display = 'none';
-        selectedIds.add(currentDeductItem.id);
-        renderTable();
-        currentDeductItem = null;
-    }
-
-    function toggleSelectAll() {
-        const checkbox = document.getElementById('selectAllBox');
-        if (checkbox.checked) {
-            currentJobData.forEach(item => selectedIds.add(item.id));
-        } else {
-            selectedIds.clear();
-        }
-        renderTable();
-    }
-
-    function updateUserSelectionStats() {
-        let count = 0;
-        let qty = 0;
-        let cbm = 0;
-        
-        // Dùng toàn bộ data của Job hiện tại để tính tổng đã chọn (không phụ thuộc vào filter FDC đang hiển thị)
-        const selectedJob = document.getElementById('jobSelect').value;
-        const jobData = allData.filter(item => item.picking_no === selectedJob);
-
-        jobData.forEach(item => {
-            if (selectedIds.has(item.id)) {
-                count++;
-                qty += Number(item.carton_qty) || 0;
-                cbm += Number(item.total_cbm) || 0;
-            }
-        });
-
-        const summaryDiv = document.getElementById('userSelectionSummary');
-        const cbmEl = document.getElementById('userSelCbm');
-
-        if (count > 0) {
-            summaryDiv.style.display = 'flex';
-            document.getElementById('userSelCount').innerText = count;
-            document.getElementById('userSelQty').innerText = qty.toLocaleString();
-            cbmEl.innerText = cbm.toFixed(3);
-
-            // Highlight đỏ nếu CBM > 56.5
-            if (cbm > 56.5) {
-                cbmEl.style.color = 'red';
-                cbmEl.style.fontSize = '1.3em'; // Tăng kích thước để dễ nhìn
-            } else {
-                cbmEl.style.color = '#d63384'; // Màu gốc
-                cbmEl.style.fontSize = '1em';
-            }
-
-            // Cập nhật Sticky Footer
-            const stickySummary = document.getElementById('stickySummary');
-            if(stickySummary) {
-                stickySummary.style.display = 'flex';
-                document.getElementById('stickyCount').innerText = count;
-                document.getElementById('stickyQty').innerText = qty.toLocaleString();
-                document.getElementById('stickyCbm').innerText = cbm.toFixed(3);
-                
-                if (cbm > 56.5) {
-                    document.getElementById('stickyCbm').style.color = '#ffcccc';
-                } else {
-                    document.getElementById('stickyCbm').style.color = 'white';
-                }
-            }
-        } else {
-            summaryDiv.style.display = 'none';
-            if (document.getElementById('stickySummary')) {
-                document.getElementById('stickySummary').style.display = 'none';
-            }
-        }
-    }
-
-    function exportToExcel() {
-        const selectedJob = document.getElementById('jobSelect').value;
-        if (!selectedJob) {
-            alert("Vui lòng chọn Job để xuất Excel!");
-            return;
-        }
-
-        const table = document.getElementById("pickingTable");
-        const wb = XLSX.utils.table_to_book(table, {sheet: "Picking List"});
-        
-        // Tự động chỉnh độ rộng cột (cơ bản)
-        const ws = wb.Sheets["Picking List"];
-        const colWidths = [{wch: 5}, {wch: 15}, {wch: 12}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 30}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 20}];
-        ws['!cols'] = colWidths;
-
-        XLSX.writeFile(wb, `PickingList_${selectedJob}.xlsx`);
-    }
-
-    function exportSelectedToExcel() {
-        const selectedJob = document.getElementById('jobSelect').value;
-        if (!selectedJob) {
-            alert("Vui lòng chọn Job để xuất Excel!");
-            return;
-        }
-
-        const selectedItems = currentJobData.filter(item => selectedIds.has(item.id));
-        if (selectedItems.length === 0) {
-            alert("Vui lòng chọn ít nhất 1 dòng để xuất Excel.");
-            return;
-        }
-
-        // Map dữ liệu sang format đẹp hơn cho Excel
-        const data = selectedItems.map(item => ({
-            "Parent PO": item.parentpo || '',
-            "Release Key": item.release_key || '',
-            "SKU": item.sku || '',
-            "Child PO": item.childpo || '',
-            "Due Date (Days)": item.due_date || '',
-            "Số Lượng (Ctn)": Number(item.carton_qty) || 0,
-            "CBM": Number(item.total_cbm) || 0,
-            "Chiều Dài": item.length_cm || 0,
-            "Chiều Rộng": item.width_cm || 0,
-            "Chiều Cao": item.height_cm || 0
-        }));
-
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(data);
-        
-        // Tự động chỉnh độ rộng cột
-        const colWidths = [{wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 10}, {wch: 15}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 10}];
-        ws['!cols'] = colWidths;
-
-        XLSX.utils.book_append_sheet(wb, ws, "Selected Items");
-        XLSX.writeFile(wb, `PickingList_Selected_${selectedJob}.xlsx`);
-    }
-
-    // --- CHỨC NĂNG TÁCH CARTON ---
-    function openSplitModal(id) {
-        const item = currentJobData.find(i => i.id === id);
-        if (!item) return;
-        
-        splitItem = item;
-        const qty = Number(item.carton_qty) || 0;
-        const cbm = Number(item.total_cbm) || 0;
-        
-        if (qty <= 1) {
-            alert("Số lượng phải lớn hơn 1 mới có thể tách.");
-            return;
-        }
-
-        document.getElementById('spOrigQty').innerText = qty;
-        document.getElementById('spOrigCbm').innerText = cbm.toFixed(4);
-        document.getElementById('spInput').value = Math.floor(qty / 2); // Mặc định tách đôi
-        document.getElementById('spInput').max = qty - 1;
-        
-        calcSplit();
-        document.getElementById('splitModal').style.display = 'flex';
-        document.getElementById('spInput').focus();
-    }
-
-    function closeSplitModal() {
-        document.getElementById('splitModal').style.display = 'none';
-        splitItem = null;
-    }
-
-    function calcSplit() {
-        if (!splitItem) return;
-        const origQty = Number(splitItem.carton_qty) || 0;
-        const cbmPer = (Number(splitItem.total_cbm) || 0) / origQty;
-        
-        let splitQty = parseInt(document.getElementById('spInput').value) || 0;
-        
-        // Validate
-        if (splitQty < 1) splitQty = 1;
-        if (splitQty >= origQty) splitQty = origQty - 1;
-
-        const remQty = origQty - splitQty;
-
-        document.getElementById('spNewQty').innerText = splitQty;
-        document.getElementById('spNewCbm').innerText = (splitQty * cbmPer).toFixed(4) + ' m³';
-
-        document.getElementById('spRemQty').innerText = remQty;
-        document.getElementById('spRemCbm').innerText = (remQty * cbmPer).toFixed(4) + ' m³';
-    }
-
-    async function submitSplit() {
-        if (!splitItem) return;
-        const splitQty = parseInt(document.getElementById('spNewQty').innerText);
-
-        try {
-            const res = await fetch('/api/check_clp/split', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: splitItem.id, split_carton: splitQty, row: splitItem })
-            });
-            const json = await res.json();
-            if (res.ok) {
-                alert("✅ Tách thành công!");
-                closeSplitModal();
-                loadData(); // Tải lại để cập nhật bảng
-            } else {
-                alert("❌ Lỗi: " + json.error);
-            }
-        } catch (err) {
-            console.error(err);
-            alert("❌ Lỗi kết nối server.");
-        }
-    }
-
-    async function moveToOutbound() {
-        const selectedItems = currentJobData.filter(item => selectedIds.has(item.id));
-        if (selectedItems.length === 0) {
-            alert("Vui lòng chọn ít nhất 1 dòng để export sang Outbound.");
-            return;
-        }
-
-        // Lấy Job hiện tại làm giá trị mặc định
-        const currentJob = document.getElementById('jobSelect').value;
-        const jobno = prompt("Nhập số Job No để cập nhật vào Outbound:", currentJob);
-        
-        if (jobno === null) return; // Người dùng bấm Hủy
-        if (!jobno.trim()) {
-            alert("Job No không được để trống!");
-            return;
-        }
-
-        if (!confirm(`Bạn có chắc chắn muốn chuyển ${selectedItems.length} dòng sang Outbound?\nJob No: ${jobno}\n⚠️ Dữ liệu sẽ được chuyển và xóa khỏi danh sách này.`)) return;
-
-        const ids = selectedItems.map(item => item.id);
-
-        try {
-            const response = await fetch('/api/check_clp/outbound', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: ids, jobno: jobno.trim() })
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                alert(`✅ Thành công! Đã chuyển ${result.inserted} dòng sang Outbound.`);
-                await loadData(); // Tải lại dữ liệu
-                renderTable(); // Vẽ lại bảng
-            } else {
-                alert('❌ Lỗi: ' + (result.error || result.details || 'Không xác định'));
-            }
-        } catch (error) {
-            console.error('Lỗi kết nối:', error);
-            alert('❌ Lỗi kết nối đến server.');
-        }
-    }
-
-    async function clearPickingList() {
-        if (!confirm('BẠN CÓ CHẮC CHẮN MUỐN XÓA TOÀN BỘ DỮ LIỆU TRONG PICKING LIST KHÔNG?\n\n⚠️ Hành động này sẽ xóa tất cả các Job và tự động hoàn trả số lượng về tồn kho. Không thể hoàn tác.')) return;
-        
-        try {
-            const response = await fetch('/api/check_clp/clear', {
-                method: 'POST'
-            });
-            const result = await response.json();
-
-            if (response.ok) {
-                alert(`✅ Thành công! ${result.message || 'Đã xóa toàn bộ Picking List.'}`);
-                // Tải lại dữ liệu từ đầu để làm mới giao diện
-                await loadData();
-            } else {
-                alert('❌ Lỗi: ' + (result.error || result.details || 'Không xác định'));
-            }
-        } catch (error) {
-            console.error('Lỗi xóa Picking List:', error);
-            alert('❌ Lỗi kết nối đến server.');
-        }
-    }
-
-    // Khởi chạy khi load trang
     loadData();
+
 </script>
 
 </body>

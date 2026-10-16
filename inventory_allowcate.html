@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Allowcate</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f2f5; margin: 20px; color: #1f2937; }
+        .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        h1 { text-align: center; margin-top: 8px; color: #111827; }
+        .nav { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; }
+        .nav a { color: #0d6efd; text-decoration: none; font-weight: bold; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: #eef2f7; padding: 14px; border-radius: 6px; margin-bottom: 16px; }
+        .btn { padding: 8px 14px; border: none; border-radius: 4px; color: #fff; background: #198754; cursor: pointer; font-weight: bold; }
+        .btn:hover { filter: brightness(0.95); }
+        .btn-secondary { background: #0d6efd; }
+        .btn-muted { background: #6c757d; }
+        .btn-danger { background: #dc3545; padding: 6px 10px; font-size: 12px; }
+        .search-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 12px; }
+        .search-input { padding: 9px; width: 240px; border: 1px solid #d1d5db; border-radius: 5px; }
+        .summary { font-weight: bold; background: #f8fafc; padding: 9px 14px; border-radius: 5px; border: 1px solid #e5e7eb; }
+        .due-over { background: #fee2e2; color: #b91c1c; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+        th { background: #0d6efd; color: #fff; position: sticky; top: 0; }
+        tbody tr:hover { background: #f8fafc; }
+        .right { text-align: right; }
+        .center { text-align: center; }
+        .muted { color: #6b7280; font-size: 13px; }
+        .error { color: #dc3545; font-weight: bold; }
+        .pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 14px; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { width: 380px; max-width: 92vw; background: #fff; border-radius: 8px; padding: 22px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.18); }
+        .progress-wrapper { height: 18px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin: 16px 0; }
+        .progress-bar { height: 100%; width: 0%; background: #0d6efd; transition: width 0.2s ease; }
+        .parent-summary { margin-top: 22px; max-height: 320px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+        .section-title { margin: 22px 0 8px; color: #111827; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="nav">
+        <a href="/">Trang chu</a>
+        <a href="/inventory.html">Inventory</a>
+        <a href="/inventory_allowcate.html">Inventory Allowcate</a>
+        <a href="/allowcate_1.html">Allocate</a>
+        <a href="/masterdata.html">Master Data</a>
+    </div>
+
+    <h1>Inventory Allowcate</h1>
+
+    <div class="toolbar">
+        <strong>Import Excel:</strong>
+        <input type="file" id="excelFile" accept=".xlsx,.xls">
+        <label style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="chkMerge">
+            Gop them du lieu cu
+        </label>
+        <button class="btn" onclick="importExcel()">Tai len</button>
+        <button class="btn btn-secondary" onclick="exportExcel()">Xuat Excel</button>
+        <button class="btn btn-danger" onclick="deleteAllRows()">Xoa tat ca</button>
+        <span class="muted">Map cot: AL -> parentPO_allow, D -> sku, BQ -> qty, O -> date_rcv, BC -> qty_rcv.</span>
+    </div>
+
+    <div class="search-row">
+        <div>
+            <input type="text" id="parentSearch" class="search-input" placeholder="Tim parent PO..." oninput="filterData()">
+            <input type="text" id="skuSearch" class="search-input" placeholder="Tim SKU..." oninput="filterData()">
+        </div>
+        <div class="summary">
+            Tong dong: <span id="totalRows">0</span> |
+            Tong qty: <span id="totalQty">0</span> |
+            Tong qty_rcv: <span id="totalQtyRcv">0</span> |
+            Tong CBM: <span id="totalCbm">0.0000</span> |
+            CBM &gt; 14 ngay: <span id="overdueCbm" style="color:#b91c1c;">0.0000</span>
+        </div>
+    </div>
+
+    <table id="allowTable">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Parent PO Allow</th>
+                <th>SKU</th>
+                <th class="right">Qty</th>
+                <th>Date Rcv</th>
+                <th class="right">Qty Rcv</th>
+                <th class="right">CBM/Carton</th>
+                <th class="right">Total CBM</th>
+                <th class="center">Due Date</th>
+                <th>Date Update</th>
+                <th class="center">Hanh dong</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="11" class="center">Dang tai du lieu...</td></tr>
+        </tbody>
+    </table>
+
+    <div class="pager">
+        <button class="btn btn-muted" id="prevBtn" onclick="prevPage()">Truoc</button>
+        <span id="pageInfo" class="muted">Trang 1/1</span>
+        <button class="btn btn-muted" id="nextBtn" onclick="nextPage()">Tiep</button>
+    </div>
+
+    <h3 class="section-title">Tong CBM theo Parent PO Allow</h3>
+    <div class="parent-summary">
+        <table id="parentSummaryTable">
+            <thead>
+                <tr>
+                    <th>Parent PO Allow</th>
+                    <th class="right">Tong Qty</th>
+                    <th class="right">Tong Qty Rcv</th>
+                    <th class="right">Tong CBM</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="4" class="center">Dang tai du lieu...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="progressModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 id="progressTitle">Dang import</h3>
+        <div class="progress-wrapper"><div id="progressBar" class="progress-bar"></div></div>
+        <div id="progressText" class="muted">Dang xu ly...</div>
+    </div>
+</div>
+
+<script>
+    const COL_SKU = 3;          // D
+    const COL_DATE_RCV = 14;    // O
+    const COL_PARENT_PO = 37;   // AL
+    const COL_QTY = 68;         // BQ
+    const COL_QTY_RCV = 54;     // BC
+    const pageSize = 50;
+    const overdueDays = 14;
+
+    let allData = [];
+    let filteredData = [];
+    let currentPage = 1;
+
+    function pad2(value) {
+        return String(value).padStart(2, '0');
+    }
+
+    function excelDateToYmd(value) {
+        if (value === null || value === undefined || value === '') return null;
+        if (value instanceof Date && !Number.isNaN(value.getTime())) {
+            return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`;
+        }
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            const parsed = XLSX.SSF.parse_date_code(value);
+            if (parsed) return `${parsed.y}-${pad2(parsed.m)}-${pad2(parsed.d)}`;
+        }
+        const text = String(value).trim();
+        if (!text) return null;
+        const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        if (isoMatch) return `${isoMatch[1]}-${pad2(isoMatch[2])}-${pad2(isoMatch[3])}`;
+        const dmyMatch = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+        if (dmyMatch) return `${dmyMatch[3]}-${pad2(dmyMatch[2])}-${pad2(dmyMatch[1])}`;
+        const parsedDate = new Date(text);
+        if (!Number.isNaN(parsedDate.getTime())) {
+            return `${parsedDate.getFullYear()}-${pad2(parsedDate.getMonth() + 1)}-${pad2(parsedDate.getDate())}`;
+        }
+        return text;
+    }
+
+    function toInt(value) {
+        if (value === null || value === undefined || value === '') return 0;
+        const cleaned = String(value).replace(/,/g, '').trim();
+        const num = Number.parseInt(cleaned, 10);
+        return Number.isFinite(num) ? num : 0;
+    }
+
+    function toNumber(value) {
+        if (value === null || value === undefined || value === '') return 0;
+        const cleaned = String(value).replace(/,/g, '').trim();
+        const num = Number.parseFloat(cleaned);
+        return Number.isFinite(num) ? num : 0;
+    }
+
+    function formatDate(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleDateString('vi-VN');
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function loadData() {
+        fetch('/api/inventory-allow')
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                allData = Array.isArray(data) ? data : [];
+                filterData();
+            })
+            .catch(err => {
+                document.querySelector('#allowTable tbody').innerHTML =
+                    `<tr><td colspan="11" class="center error">Loi tai du lieu: ${err.message}</td></tr>`;
+            });
+    }
+
+    function filterData() {
+        const parentKeyword = document.getElementById('parentSearch').value.toLowerCase().trim();
+        const skuKeyword = document.getElementById('skuSearch').value.toLowerCase().trim();
+        filteredData = allData.filter(item =>
+            String(item.parentPO_allow || '').toLowerCase().includes(parentKeyword) &&
+            String(item.sku || '').toLowerCase().includes(skuKeyword)
+        );
+        currentPage = 1;
+        renderTable();
+    }
+
+    function renderTable() {
+        const tbody = document.querySelector('#allowTable tbody');
+        renderParentSummary();
+        const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        const totalQty = filteredData.reduce((sum, item) => sum + toInt(item.qty), 0);
+        const totalQtyRcv = filteredData.reduce((sum, item) => sum + toInt(item.qty_rcv), 0);
+        const totalCbm = filteredData.reduce((sum, item) => sum + toNumber(item.total_cbm), 0);
+        const overdueCbm = filteredData.reduce((sum, item) => {
+            const dueDate = item.due_date_days === null || item.due_date_days === undefined ? 0 : toInt(item.due_date_days);
+            return dueDate > overdueDays && toInt(item.qty) > 0 ? sum + toNumber(item.total_cbm) : sum;
+        }, 0);
+        document.getElementById('totalRows').innerText = filteredData.length.toLocaleString();
+        document.getElementById('totalQty').innerText = totalQty.toLocaleString();
+        document.getElementById('totalQtyRcv').innerText = totalQtyRcv.toLocaleString();
+        document.getElementById('totalCbm').innerText = totalCbm.toFixed(4);
+        document.getElementById('overdueCbm').innerText = overdueCbm.toFixed(4);
+
+        if (filteredData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11" class="center">Chua co du lieu phu hop</td></tr>';
+            document.getElementById('pageInfo').innerText = 'Trang 0/0';
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('nextBtn').disabled = true;
+            return;
+        }
+
+        const start = (currentPage - 1) * pageSize;
+        const pageRows = filteredData.slice(start, start + pageSize);
+        tbody.innerHTML = pageRows.map(item => {
+            const dueDate = item.due_date_days === null || item.due_date_days === undefined ? '' : toInt(item.due_date_days);
+            const dueClass = dueDate !== '' && dueDate > overdueDays ? 'due-over' : '';
+            return `
+                <tr>
+                    <td>${escapeHtml(item.id)}</td>
+                    <td>${escapeHtml(item.parentPO_allow)}</td>
+                    <td>${escapeHtml(item.sku)}</td>
+                    <td class="right">${toInt(item.qty).toLocaleString()}</td>
+                    <td>${escapeHtml(formatDate(item.date_rcv))}</td>
+                    <td class="right">${toInt(item.qty_rcv).toLocaleString()}</td>
+                    <td class="right">${toNumber(item.cbm_per_carton).toFixed(4)}</td>
+                    <td class="right">${toNumber(item.total_cbm).toFixed(4)}</td>
+                    <td class="center ${dueClass}">${escapeHtml(dueDate)}</td>
+                    <td>${escapeHtml(formatDate(item.date_update))}</td>
+                    <td class="center">
+                        <button class="btn btn-danger" onclick="deleteRow(${Number(item.id) || 0})">Xoa</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        document.getElementById('pageInfo').innerText = `Trang ${currentPage}/${totalPages} (${pageRows.length}/${filteredData.length})`;
+        document.getElementById('prevBtn').disabled = currentPage <= 1;
+        document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+    }
+
+    function renderParentSummary() {
+        const tbody = document.querySelector('#parentSummaryTable tbody');
+        const grouped = new Map();
+
+        filteredData.forEach(item => {
+            const parentPo = String(item.parentPO_allow || '').trim() || '(Trong)';
+            const current = grouped.get(parentPo) || { qty: 0, qtyRcv: 0, cbm: 0 };
+            current.qty += toInt(item.qty);
+            current.qtyRcv += toInt(item.qty_rcv);
+            current.cbm += toNumber(item.total_cbm);
+            grouped.set(parentPo, current);
+        });
+
+        const rows = Array.from(grouped.entries()).sort((a, b) => b[1].cbm - a[1].cbm);
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="center">Chua co du lieu</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = rows.map(([parentPo, value]) => `
+            <tr>
+                <td>${escapeHtml(parentPo)}</td>
+                <td class="right">${value.qty.toLocaleString()}</td>
+                <td class="right">${value.qtyRcv.toLocaleString()}</td>
+                <td class="right">${value.cbm.toFixed(4)}</td>
+            </tr>
+        `).join('');
+    }
+
+    function prevPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            renderTable();
+        }
+    }
+
+    function nextPage() {
+        const totalPages = Math.ceil(filteredData.length / pageSize);
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderTable();
+        }
+    }
+
+    async function deleteRow(id) {
+        if (!id) {
+            alert('Khong tim thay id de xoa!');
+            return;
+        }
+        if (!confirm(`Ban co chac muon xoa dong ID ${id}?`)) return;
+
+        try {
+            const response = await fetch('/api/inventory-allow/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.details || result.error || 'Xoa that bai');
+            loadData();
+        } catch (err) {
+            alert('Loi: ' + err.message);
+        }
+    }
+
+    async function deleteAllRows() {
+        if (!confirm('Ban co chac muon xoa TAT CA du lieu trong bang invetory_allow?')) return;
+        if (!confirm('Xac nhan lan 2: thao tac nay khong the hoan tac. Ban van muon xoa tat ca?')) return;
+
+        try {
+            const response = await fetch('/api/inventory-allow/delete-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.details || result.error || 'Xoa tat ca that bai');
+            alert(`Da xoa ${result.affected || 0} dong.`);
+            loadData();
+        } catch (err) {
+            alert('Loi: ' + err.message);
+        }
+    }
+
+    function importExcel() {
+        const file = document.getElementById('excelFile').files[0];
+        if (!file) {
+            alert('Vui long chon file Excel!');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const workbook = XLSX.read(new Uint8Array(event.target.result), { type: 'array', cellDates: true });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+            if (rows.length <= 1) {
+                alert('File Excel khong co du lieu!');
+                return;
+            }
+
+            const data = rows.slice(1).map(row => ({
+                parentPO_allow: String(row[COL_PARENT_PO] ?? '').trim(),
+                sku: String(row[COL_SKU] ?? '').trim(),
+                qty: toInt(row[COL_QTY]),
+                date_rcv: excelDateToYmd(row[COL_DATE_RCV]),
+                qty_rcv: toInt(row[COL_QTY_RCV])
+            })).filter(item => item.parentPO_allow || item.sku || item.qty || item.date_rcv || item.qty_rcv);
+
+            uploadData(data);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    async function uploadData(data) {
+        const isMerge = document.getElementById('chkMerge').checked;
+        const mode = isMerge ? 'merge' : 'replace';
+        const confirmMsg = isMerge
+            ? `Ban co chac muon gop them ${data.length} dong vao du lieu hien tai?`
+            : `Hanh dong nay se xoa du lieu cu trong bang invetory_allow.\nBan co chac muon import ${data.length} dong moi?`;
+        if (!data.length) {
+            alert('Khong co dong hop le de import!');
+            return;
+        }
+        if (!confirm(confirmMsg)) return;
+
+        const modal = document.getElementById('progressModal');
+        const bar = document.getElementById('progressBar');
+        const text = document.getElementById('progressText');
+        modal.style.display = 'flex';
+        bar.style.width = '20%';
+        bar.style.background = '#0d6efd';
+        text.innerText = 'Dang gui du lieu len server...';
+
+        try {
+            const response = await fetch(`/api/inventory-allow/import?mode=${mode}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.details || result.error || 'Import that bai');
+
+            bar.style.width = '100%';
+            bar.style.background = '#198754';
+            text.innerText = 'Import thanh cong';
+            alert(`Hoan tat!\n- Dong doc tu file: ${result.received}\n- Dong da them: ${result.inserted}\n- Dong bo qua: ${result.skipped}`);
+            modal.style.display = 'none';
+            loadData();
+        } catch (err) {
+            bar.style.width = '100%';
+            bar.style.background = '#dc3545';
+            text.innerText = err.message;
+            alert('Loi: ' + err.message);
+        }
+    }
+
+    function exportExcel() {
+        if (!filteredData.length) {
+            alert('Khong co du lieu de xuat!');
+            return;
+        }
+        const exportData = filteredData.map(item => ({
+            id: item.id,
+            parentPO_allow: item.parentPO_allow,
+            sku: item.sku,
+            qty: item.qty,
+            date_rcv: item.date_rcv,
+            qty_rcv: item.qty_rcv,
+            cbm_per_carton: item.cbm_per_carton,
+            total_cbm: item.total_cbm,
+            due_date_days: item.due_date_days,
+            date_update: item.date_update
+        }));
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Inventory Allow');
+        XLSX.writeFile(wb, `Inventory_Allow_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    loadData();
+</script>
+</body>
+</html>

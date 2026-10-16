@@ -69,6 +69,7 @@
         <div style="flex: 1; min-width: 200px;">
             <input type="text" id="skuSearch" placeholder="📦 Tìm SKU..." oninput="applyFilters()" style="width: 100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
         </div>
+        <button class="btn-import" onclick="exportExcel()" style="background-color: #0d6efd; white-space: nowrap;">📥 Xuất Excel</button>
     </div>
 
     <div id="summaryStats" style="margin: 10px 0; display: flex; gap: 15px; flex-wrap: wrap;">
@@ -100,6 +101,7 @@
 
 <script>
     let bbrData = [];
+    let currentFilteredData = []; // Biến mới để lưu dữ liệu đã lọc
 
     fetch('/api/bbr')
         .then(response => response.json())
@@ -123,6 +125,7 @@
             const matchSku = (item.sku || '').toString().toLowerCase().includes(skuKeyword);
             return matchChild && matchParent && matchSku;
         });
+        currentFilteredData = filtered; // Lưu trữ dữ liệu đã lọc
         renderTable(filtered);
     }
 
@@ -199,56 +202,40 @@
         }
     }
 
+    // --- HÀM XUẤT EXCEL ---
+    function exportExcel() {
+        if (!currentFilteredData || currentFilteredData.length === 0) {
+            alert("Không có dữ liệu để xuất!");
+            return;
+        }
+
+        const exportData = currentFilteredData.map(item => ({
+            "ID": item.id,
+            "Child PO": item.child_po || '',
+            "Parent PO": item.parent_po || '',
+            "SKU": item.sku || '',
+            "Qty BBR": item.qty_bbr || 0,
+            "Remark": item.remark || '',
+            "Đã chọn": item.is_select ? 'Có' : 'Không'
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "BBR_Report");
+
+        ws['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 30 }, { wch: 10 }];
+
+        XLSX.writeFile(wb, `BBR_Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
     // --- HÀM XỬ LÝ IMPORT EXCEL ---
     function importExcel() {
         const fileInput = document.getElementById('excelFile');
         const file = fileInput.files[0];
 
         if (!file) { alert('Vui lòng chọn file Excel!'); return; }
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            
-            // Header là dòng 4 -> range: 3 (vì index bắt đầu từ 0)
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 3, raw: false });
-
-            if (jsonData.length === 0) { alert('File Excel không có dữ liệu!'); return; }
-
-            console.log('Dữ liệu thô (dòng đầu):', jsonData[0]);
-
-            const standardizedData = [];
-            
-            jsonData.forEach(row => {
-                const poNumber = row['PO NUMBER'];
-                // Kiểm tra PO NUMBER khác rỗng
-                if (!poNumber || poNumber.toString().trim() === '') return;
-
-                const qty = parseFloat(row['QTY']) || 0;
-                const qtyPerPck = parseFloat(row['QTY per PCK']) || 1; // Tránh chia cho 0
-                const calculatedQty = Math.floor(qty / qtyPerPck); // Tính toán QTY/QTY per PCK
-
-                standardizedData.push({
-                    child_po: poNumber,
-                    parent_po: row['PARENT PO'],
-                    sku: row['ITEM NO'],
-                    qty_bbr: calculatedQty
-                });
-            });
-
-            uploadData(standardizedData);
-        };
-        reader.readAsArrayBuffer(file);
-    }
-
-    // --- UPLOAD VỚI PROGRESS BAR ---
-    async function uploadData(data) {
-        if (data.length === 0) { alert('Không có dữ liệu hợp lệ để import!'); return; }
-        if (!confirm(`Bạn có chắc muốn import ${data.length} dòng dữ liệu BBR?`)) return;
-
+        if (!confirm(`Bạn có chắc muốn đọc và import file Excel này không?`)) return;
+        
         const modal = document.getElementById('progressModal');
         const pBar = document.getElementById('progressBar');
         const pText = document.getElementById('progressText');
@@ -256,10 +243,79 @@
         
         modal.style.display = 'flex';
         resultBox.style.display = 'none';
-        pBar.style.width = '0%';
+        pBar.style.width = '10%';
+        pText.innerText = 'Đang đọc và xử lý file Excel...';
+
+        setTimeout(() => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+
+                    // Bắt đầu đọc từ row 5, map cột theo Excel: I = child_po, E = parentPO, S = sku, Z = qty_bbr
+                    const rows = XLSX.utils.sheet_to_json(worksheet, {
+                        header: 1,
+                        range: 4,
+                        raw: false,
+                        blankrows: false
+                    });
+
+                    if (!Array.isArray(rows) || rows.length === 0) {
+                        alert('File Excel không có dữ liệu!');
+                        modal.style.display = 'none';
+                        return;
+                    }
+
+                    const standardizedData = [];
+
+                    rows.forEach(row => {
+                        if (!Array.isArray(row)) return;
+
+                        const childPo = row[8];
+                        const parentPo = row[4];
+                        const sku = row[18];
+                        const qtyValue = row[25];
+
+                        if (!childPo || childPo.toString().trim() === '') return;
+
+                        const qty = Number(String(qtyValue ?? '').replace(/[,\s]/g, '')) || 0;
+
+                        standardizedData.push({
+                            child_po: childPo.toString().trim(),
+                            parent_po: parentPo != null ? parentPo.toString().trim() : '',
+                            sku: sku != null ? sku.toString().trim() : '',
+                            qty_bbr: qty
+                        });
+                    });
+
+                    uploadData(standardizedData);
+                } catch (err) {
+                    alert('Lỗi xử lý file Excel: ' + err.message);
+                    modal.style.display = 'none';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }, 100);
+    }
+
+    // --- UPLOAD VỚI PROGRESS BAR ---
+    async function uploadData(data) {
+        if (data.length === 0) {
+            alert('Không có dữ liệu hợp lệ để import!'); 
+            document.getElementById('progressModal').style.display = 'none';
+            return;
+        }
+
+        const pBar = document.getElementById('progressBar');
+        const pText = document.getElementById('progressText');
+        const resultBox = document.getElementById('resultBox');
+        
         pText.innerText = 'Đang chuẩn bị...';
 
-        const BATCH_SIZE = 50;
+        const BATCH_SIZE = 1000;
         let total = data.length;
         let processed = 0;
         let stats = { inserted: 0, updated: 0, errors: 0 };
